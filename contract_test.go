@@ -11,9 +11,9 @@ func TestContractStartLifecycle(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	rootCtx, root := Start(context.Background(), "root", slog.String("service", "api"))
+	rootCtx, root := NewSpan(context.Background(), "root", slog.String("service", "api"))
 	if rootCtx == nil {
-		t.Fatal("Start(nil) returned nil context")
+		t.Fatal("NewSpan(nil) returned nil context")
 	}
 
 	Attrs(rootCtx, slog.String("region", "eu-west-1"))
@@ -22,7 +22,7 @@ func TestContractStartLifecycle(t *testing.T) {
 	Error(rootCtx, rootErr, slog.String("phase", "handler"))
 	Fail(rootCtx)
 
-	childCtx, child := Start(rootCtx, "child", slog.String("component", "repo"))
+	childCtx, child := NewSpan(rootCtx, "child", slog.String("component", "repo"))
 	Attrs(childCtx, slog.String("cache", "miss"))
 	childErr := errors.New("child failed")
 	Error(childCtx, childErr, slog.String("attempt", "first"))
@@ -48,8 +48,8 @@ func TestContractStartLifecycle(t *testing.T) {
 	if rootData.ID == "" || rootData.TraceID == "" {
 		t.Fatalf("root ids = (%q, %q), want non-empty", rootData.ID, rootData.TraceID)
 	}
-	if rootData.EndTime.Before(rootData.StartTime) {
-		t.Fatalf("root EndTime %v before StartTime %v", rootData.EndTime, rootData.StartTime)
+	if rootData.TimeEnd.Before(rootData.TimeStart) {
+		t.Fatalf("root EndTime %v before StartTime %v", rootData.TimeEnd, rootData.TimeStart)
 	}
 	if !rootData.Failed {
 		t.Fatal("root Failed = false, want true")
@@ -68,8 +68,8 @@ func TestContractStartLifecycle(t *testing.T) {
 	if rootData.Events[0].Time.IsZero() {
 		t.Fatal("event Time is zero, want recorded timestamp")
 	}
-	if rootData.Events[0].Time.Before(rootData.StartTime) || rootData.Events[0].Time.After(rootData.EndTime) {
-		t.Fatalf("event Time %v outside span bounds [%v, %v]", rootData.Events[0].Time, rootData.StartTime, rootData.EndTime)
+	if rootData.Events[0].Time.Before(rootData.TimeStart) || rootData.Events[0].Time.After(rootData.TimeEnd) {
+		t.Fatalf("event Time %v outside span bounds [%v, %v]", rootData.Events[0].Time, rootData.TimeStart, rootData.TimeEnd)
 	}
 	requireAttrValue(t, rootData.Events[0].Attrs, "table", "users")
 	if len(rootData.Errors) != 1 {
@@ -107,15 +107,15 @@ func TestContractStartLifecycle(t *testing.T) {
 }
 
 func TestContractHierarchy(t *testing.T) {
-	rootCtx, root := Start(context.Background(), "root")
-	childCtx, child := Start(rootCtx, "child")
-	_, sibling := Start(rootCtx, "sibling")
-	_, grandchild := Start(childCtx, "grandchild")
+	rootCtx, root := NewSpan(context.Background(), "root")
+	childCtx, child := NewSpan(rootCtx, "child")
+	_, sibling := NewSpan(rootCtx, "sibling")
+	_, grandchild := NewSpan(childCtx, "grandchild")
 
-	rootSpan := root.(*span)
-	childSpan := child.(*span)
-	siblingSpan := sibling.(*span)
-	grandchildSpan := grandchild.(*span)
+	rootSpan := root
+	childSpan := child
+	siblingSpan := sibling
+	grandchildSpan := grandchild
 
 	if childSpan.parentID != rootSpan.id {
 		t.Fatalf("child ParentID = %q, want %q", childSpan.parentID, rootSpan.id)
@@ -159,7 +159,7 @@ func TestContractInSpanAndInSpanE(t *testing.T) {
 
 	first := findSpanDataByName(t, spans, "in-span")
 	second := findSpanDataByName(t, spans, "in-span-e")
-	if first.EndTime.IsZero() || second.EndTime.IsZero() {
+	if first.TimeEnd.IsZero() || second.TimeEnd.IsZero() {
 		t.Fatal("InSpan/InSpanE should end spans")
 	}
 	requireAttrValue(t, first.Attrs, "step", "inside")
@@ -183,8 +183,8 @@ func TestContractPostEndMutationsIgnored(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	ctx, started := Start(context.Background(), "ended", slog.String("state", "before"))
-	sp := started.(*span)
+	ctx, started := NewSpan(context.Background(), "ended", slog.String("state", "before"))
+	sp := started
 	Event(ctx, "before", slog.String("order", "1"))
 	started.End()
 
@@ -207,7 +207,7 @@ func TestContractPostEndMutationsIgnored(t *testing.T) {
 	if data.Failed {
 		t.Fatal("Fail after End should be ignored")
 	}
-	if sp.View().EndTime.IsZero() {
+	if sp.Snapshot().TimeEnd.IsZero() {
 		t.Fatal("End should still set EndTime")
 	}
 }
@@ -216,7 +216,7 @@ func TestContractNilErrorIgnored(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	ctx, sp := Start(context.Background(), "nil-error")
+	ctx, sp := NewSpan(context.Background(), "nil-error")
 	Error(ctx, nil, slog.String("phase", "ignored"))
 	sp.End()
 
@@ -234,7 +234,7 @@ func TestContractStartSnapshotsInitialAttrs(t *testing.T) {
 		slog.String("service", "api"),
 		slog.String("region", "eu-west-1"),
 	}
-	_, sp := Start(context.Background(), "snapshotted", attrs...)
+	_, sp := NewSpan(context.Background(), "snapshotted", attrs...)
 	attrs[0] = slog.String("service", "mutated")
 	attrs[1] = slog.String("region", "us-east-1")
 	sp.End()
@@ -252,8 +252,8 @@ func TestContractInvalidTraceStateDroppedAndRecorded(t *testing.T) {
 		TraceParentHeader: validVersion00TraceParent,
 		TraceStateHeader:  "bad=\nvalue",
 	})
-	ctx, sp := Start(extracted, "child")
-	started := sp.(*span)
+	ctx, sp := NewSpan(extracted, "child")
+	started := sp
 	sp.End()
 
 	if started.traceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
@@ -290,8 +290,8 @@ func TestContractInvalidTraceParentStartsNewTraceAndRecordsDiagnostic(t *testing
 		TraceParentHeader: "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01",
 		TraceStateHeader:  "rojo=1",
 	})
-	ctx, sp := Start(extracted, "root")
-	started := sp.(*span)
+	ctx, sp := NewSpan(extracted, "root")
+	started := sp
 	sp.End()
 
 	if started.parentID != "" {

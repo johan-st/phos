@@ -12,10 +12,10 @@ func TestSpanDataJSONShape(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	rootCtx, root := Start(context.Background(), "root", slog.String("service", "api"))
+	rootCtx, root := NewSpan(context.Background(), "root", slog.String("service", "api"))
 	Event(rootCtx, "query", slog.String("table", "users"))
 	Error(rootCtx, errors.New("boom"), slog.String("phase", "db"))
-	childCtx, child := Start(rootCtx, "child", slog.String("component", "repo"))
+	childCtx, child := NewSpan(rootCtx, "child", slog.String("component", "repo"))
 	Attrs(childCtx, slog.String("cache", "miss"))
 	child.End()
 	root.End()
@@ -62,7 +62,7 @@ func TestSpanDataJSONShape(t *testing.T) {
 }
 
 func TestSpanDataAttrsJSONStability(t *testing.T) {
-	data := SpanData{
+	data := Snapshot{
 		Name: "root",
 		Attrs: []slog.Attr{
 			slog.String("service", "api"),
@@ -94,7 +94,7 @@ func TestSpanDataAttrsJSONStability(t *testing.T) {
 }
 
 func TestErrorDataMarshalJSON(t *testing.T) {
-	data := ErrorData{
+	data := SnapshotError{
 		Err:   errors.New("broken"),
 		Attrs: []slog.Attr{slog.String("phase", "sync")},
 	}
@@ -116,7 +116,7 @@ func TestDiagnosticEventsMarshalInSpanJSON(t *testing.T) {
 	ctx := ExtractTraceContext(context.Background(), MapCarrier{
 		TraceParentHeader: "00-4bf92f3577b34da6a3ce929d0e0e4736-0000000000000000-01",
 	})
-	_, sp := Start(ctx, "root")
+	_, sp := NewSpan(ctx, "root")
 	sp.End()
 
 	rootJSON := decodeJSONMap(t, mustJSON(t, findSpanDataByName(t, getSpans(), "root")))

@@ -7,7 +7,7 @@ The Phos library is meant to be a simple-to-use, difficult-to-misuse tracing lib
 ```go
 import "github.com/johan-st/phos"
 
-ctx, span := phos.Start(ctx, "handler", slog.String("route", "/api"))
+ctx, span := phos.NewSpan(ctx, "handler", slog.String("route", "/api"))
 defer span.End()
 
 phos.Attrs(ctx, slog.String("user", id))

@@ -80,8 +80,8 @@ func TestHTTPHeaderCarrierInjectUsesRealHTTPHeader(t *testing.T) {
 		TraceParentHeader: validVersion00TraceParent,
 		TraceStateHeader:  "rojo=1,congo=2",
 	})
-	ctx, started := Start(ctx, "http-child")
-	span := started.(*span)
+	ctx, started := NewSpan(ctx, "http-child")
+	span := started
 
 	InjectTraceContext(ctx, HTTPHeaderCarrier{Header: headers})
 
@@ -108,8 +108,8 @@ func TestHTTPHeaderCarrierInjectUsesRealHTTPHeader(t *testing.T) {
 }
 
 func TestInjectAndExtractIgnoreNilCarrier(t *testing.T) {
-	ctx, started := Start(context.Background(), "root")
-	span := started.(*span)
+	ctx, started := NewSpan(context.Background(), "root")
+	span := started
 
 	InjectTraceContext(ctx, nil)
 

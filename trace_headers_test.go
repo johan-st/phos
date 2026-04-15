@@ -254,8 +254,8 @@ func TestW3CTraceContextSpec(t *testing.T) {
 						TraceParentHeader: validVersion00TraceParent,
 						TraceStateHeader:  "rojo=1,congo=2",
 					})
-					ctx, startedSpan := Start(ctx, "child")
-					return ctx, startedSpan.(*span).id
+					ctx, startedSpan := NewSpan(ctx, "child")
+					return ctx, startedSpan.id
 				},
 				wantVersion:         "00",
 				wantTraceID:         "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -270,8 +270,8 @@ func TestW3CTraceContextSpec(t *testing.T) {
 						TraceParentHeader: validFutureTraceParent,
 						TraceStateHeader:  "rojo=1",
 					})
-					ctx, startedSpan := Start(ctx, "child")
-					return ctx, startedSpan.(*span).id
+					ctx, startedSpan := NewSpan(ctx, "child")
+					return ctx, startedSpan.id
 				},
 				wantVersion:         "00",
 				wantTraceID:         "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -282,8 +282,8 @@ func TestW3CTraceContextSpec(t *testing.T) {
 			{
 				name: "new trace defaults unsampled",
 				setup: func() (context.Context, string) {
-					ctx, startedSpan := Start(context.Background(), "root")
-					return ctx, startedSpan.(*span).id
+					ctx, startedSpan := NewSpan(context.Background(), "root")
+					return ctx, startedSpan.id
 				},
 				wantVersion:         "00",
 				wantTraceID:         "",
@@ -331,28 +331,28 @@ func TestW3CTraceContextSpec(t *testing.T) {
 
 		startCases := []struct {
 			name            string
-			setup           func() (context.Context, *span)
+			setup           func() (context.Context, *Span)
 			wantTraceID     string
 			wantParentID    string
 			wantTraceFlags  string
 			wantTraceState  string
-			wantOutgoingRef func(*span) string
+			wantOutgoingRef func(*Span) string
 		}{
 			{
 				name: "start with extracted trace context keeps remote trace data",
-				setup: func() (context.Context, *span) {
+				setup: func() (context.Context, *Span) {
 					ctx := ExtractTraceContext(context.Background(), MapCarrier{
 						TraceParentHeader: validUnsampledTraceParent,
 						TraceStateHeader:  "rojo=1",
 					})
-					ctx, childSpan := Start(ctx, "child")
-					return ctx, childSpan.(*span)
+					ctx, childSpan := NewSpan(ctx, "child")
+					return ctx, childSpan
 				},
 				wantTraceID:    "4bf92f3577b34da6a3ce929d0e0e4736",
 				wantParentID:   "00f067aa0ba902b7",
 				wantTraceFlags: "00",
 				wantTraceState: "rojo=1",
-				wantOutgoingRef: func(s *span) string {
+				wantOutgoingRef: func(s *Span) string {
 					return s.id
 				},
 			},
@@ -426,15 +426,15 @@ func TestExtractTraceContextMissingTraceParentIgnoresTraceState(t *testing.T) {
 }
 
 func TestInjectExtractStartRoundTripHTTPHeaderCarrier(t *testing.T) {
-	rootCtx, root := Start(context.Background(), "root")
-	rootSpan := root.(*span)
+	rootCtx, root := NewSpan(context.Background(), "root")
+	rootSpan := root
 
 	headers := http.Header{}
 	InjectTraceContext(rootCtx, HTTPHeaderCarrier{Header: headers})
 
 	extracted := ExtractTraceContext(context.Background(), HTTPHeaderCarrier{Header: headers})
-	childCtx, child := Start(extracted, "child")
-	childSpan := child.(*span)
+	childCtx, child := NewSpan(extracted, "child")
+	childSpan := child
 
 	if childSpan.traceID != rootSpan.traceID {
 		t.Fatalf("child traceID = %q, want %q", childSpan.traceID, rootSpan.traceID)
@@ -458,15 +458,15 @@ func TestInjectExtractStartRoundTripHTTPHeaderCarrier(t *testing.T) {
 }
 
 func TestInjectExtractStartRoundTripMapCarrier(t *testing.T) {
-	rootCtx, root := Start(context.Background(), "root")
-	rootSpan := root.(*span)
+	rootCtx, root := NewSpan(context.Background(), "root")
+	rootSpan := root
 
 	outgoing := MapCarrier{}
 	InjectTraceContext(rootCtx, outgoing)
 
 	extracted := ExtractTraceContext(context.Background(), outgoing)
-	_, child := Start(extracted, "child")
-	childSpan := child.(*span)
+	_, child := NewSpan(extracted, "child")
+	childSpan := child
 
 	if childSpan.traceID != rootSpan.traceID {
 		t.Fatalf("child traceID = %q, want %q", childSpan.traceID, rootSpan.traceID)

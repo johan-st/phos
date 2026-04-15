@@ -59,8 +59,8 @@ func FuzzInjectExtractRoundTrip(f *testing.F) {
 			TraceParentHeader: traceParentValue,
 			TraceStateHeader:  traceState,
 		})
-		ctx, started := Start(ctx, "child")
-		sp := started.(*span)
+		ctx, started := NewSpan(ctx, "child")
+		sp := started
 
 		carrier := MapCarrier{}
 		InjectTraceContext(ctx, carrier)
@@ -85,8 +85,8 @@ func FuzzInjectExtractRoundTrip(f *testing.F) {
 
 func TestGeneratedIDsHaveExpectedShape(t *testing.T) {
 	for range 100 {
-		ctx, started := Start(context.Background(), "root")
-		sp := started.(*span)
+		ctx, started := NewSpan(context.Background(), "root")
+		sp := started
 
 		if !isLowerHex(sp.id, 16) || isAllZeroHex(sp.id) {
 			t.Fatalf("span id = %q, want 16 lowercase hex chars and not all zero", sp.id)

@@ -7,9 +7,9 @@ import (
 	"github.com/johan-st/phos"
 )
 
-func ExampleStart() {
+func ExampleNewSpan() {
 	ctx := context.Background()
-	ctx, span := phos.Start(ctx, "request", slog.String("method", "GET"))
+	ctx, span := phos.NewSpan(ctx, "request", slog.String("method", "GET"))
 	defer span.End()
 
 	phos.Attrs(ctx, slog.String("user", "alice"))

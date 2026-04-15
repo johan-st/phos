@@ -7,15 +7,14 @@ import (
 
 type InMemExportImporter struct {
 	mu    sync.Mutex
-	spans map[string]SpanData
+	spans map[string]Snapshot
 }
 
 func NewInMemExportImporter() *InMemExportImporter {
-	return &InMemExportImporter{spans: make(map[string]SpanData)}
+	return &InMemExportImporter{spans: make(map[string]Snapshot)}
 }
 
-func (e *InMemExportImporter) Export(span DataViewer) {
-	data := span.View()
+func (e *InMemExportImporter) Export(data Snapshot) {
 	data.Attrs = cloneAttrs(data.Attrs)
 	data.Events = cloneEvents(data.Events)
 	data.Errors = cloneErrorData(data.Errors)
@@ -25,11 +24,11 @@ func (e *InMemExportImporter) Export(span DataViewer) {
 }
 
 // Snapshot returns a deep copy of all exported spans keyed by span ID.
-func (e *InMemExportImporter) Snapshot() map[string]SpanData {
+func (e *InMemExportImporter) Snapshot() map[string]Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	out := make(map[string]SpanData, len(e.spans))
+	out := make(map[string]Snapshot, len(e.spans))
 	for id, data := range e.spans {
 		data.Attrs = cloneAttrs(data.Attrs)
 		data.Events = cloneEvents(data.Events)
@@ -48,11 +47,11 @@ func cloneAttrs(attrs []slog.Attr) []slog.Attr {
 	return cloned
 }
 
-func cloneEvents(events []EventData) []EventData {
+func cloneEvents(events []SnapshotEvent) []SnapshotEvent {
 	if len(events) == 0 {
 		return nil
 	}
-	cloned := make([]EventData, len(events))
+	cloned := make([]SnapshotEvent, len(events))
 	copy(cloned, events)
 	for i := range cloned {
 		cloned[i].Attrs = cloneAttrs(cloned[i].Attrs)
@@ -60,11 +59,11 @@ func cloneEvents(events []EventData) []EventData {
 	return cloned
 }
 
-func cloneErrorData(errs []ErrorData) []ErrorData {
+func cloneErrorData(errs []SnapshotError) []SnapshotError {
 	if len(errs) == 0 {
 		return nil
 	}
-	cloned := make([]ErrorData, len(errs))
+	cloned := make([]SnapshotError, len(errs))
 	copy(cloned, errs)
 	for i := range cloned {
 		cloned[i].Attrs = cloneAttrs(cloned[i].Attrs)

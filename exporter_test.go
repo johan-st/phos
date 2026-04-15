@@ -11,7 +11,7 @@ func TestExporterEndIsIdempotent(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	_, sp := Start(context.Background(), "once")
+	_, sp := NewSpan(context.Background(), "once")
 	sp.End()
 	sp.End()
 	sp.End()
@@ -25,8 +25,8 @@ func TestInMemExportImporterSnapshotsAreStable(t *testing.T) {
 	exp := NewInMemExportImporter()
 	withExporter(t, exp)
 
-	ctx, started := Start(context.Background(), "root", slog.String("service", "api"))
-	internal := started.(*span)
+	ctx, started := NewSpan(context.Background(), "root", slog.String("service", "api"))
+	internal := started
 	Attrs(ctx, slog.String("first", "value"))
 	Event(ctx, "evt", slog.String("phase", "before-end"))
 	rootErr := errors.New("snap")
@@ -61,8 +61,8 @@ func TestInMemExportImporterSnapshotsAreStable(t *testing.T) {
 }
 
 func TestViewReturnsDetachedSnapshot(t *testing.T) {
-	_, started := Start(context.Background(), "view", slog.String("service", "api"))
-	sp := started.(*span)
+	_, started := NewSpan(context.Background(), "view", slog.String("service", "api"))
+	sp := started
 	sp.Event("evt", slog.String("phase", "view"))
 	sp.Error(errors.New("boom"), slog.String("scope", "view"))
 

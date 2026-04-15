@@ -13,25 +13,25 @@ func BenchmarkStartEndRoot(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, span := Start(context.Background(), "root")
+		_, span := NewSpan(context.Background(), "root")
 		span.End()
 	}
 }
 
 func BenchmarkStartEndChild(b *testing.B) {
-	ctx, parent := Start(context.Background(), "parent")
+	ctx, parent := NewSpan(context.Background(), "parent")
 	defer parent.End()
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		childCtx, child := Start(ctx, "child")
+		childCtx, child := NewSpan(ctx, "child")
 		_ = childCtx
 		child.End()
 	}
 }
 
 func BenchmarkInjectTraceContextSpan(b *testing.B) {
-	ctx, span := Start(context.Background(), "bench")
+	ctx, span := NewSpan(context.Background(), "bench")
 	defer span.End()
 	carrier := MapCarrier{}
 	b.ReportAllocs()
@@ -94,8 +94,8 @@ func BenchmarkSpanAttrs(b *testing.B) {
 			b.ReportAllocs()
 
 			for i := 0; i < b.N; i++ {
-				_, sp := Start(context.Background(), "bench")
-				s := sp.(*span)
+				_, sp := NewSpan(context.Background(), "bench")
+				s := sp
 				s.Attrs(attrs...)
 			}
 		})
@@ -110,8 +110,8 @@ func BenchmarkSpanEvent(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, sp := Start(context.Background(), "bench")
-		s := sp.(*span)
+		_, sp := NewSpan(context.Background(), "bench")
+		s := sp
 		s.Event("query", attrs...)
 	}
 }
@@ -125,8 +125,8 @@ func BenchmarkSpanError(b *testing.B) {
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {
-		_, sp := Start(context.Background(), "bench")
-		s := sp.(*span)
+		_, sp := NewSpan(context.Background(), "bench")
+		s := sp
 		s.Error(err, attrs...)
 	}
 }

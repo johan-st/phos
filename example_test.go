@@ -16,19 +16,19 @@ func TestExample_TraceVisualization(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	rootCtx, root := Start(context.Background(), "http.request",
+	rootCtx, root := NewSpan(context.Background(), "http.request",
 		slog.String("method", "GET"),
 		slog.String("path", "/api/users"),
 	)
 	Event(rootCtx, "received")
 	time.Sleep(2 * time.Millisecond)
 
-	authCtx, auth := Start(rootCtx, "auth")
+	authCtx, auth := NewSpan(rootCtx, "auth")
 	Event(authCtx, "lookup")
 	time.Sleep(time.Millisecond)
 	Event(authCtx, "granted")
 
-	_, tokenVerify := Start(authCtx, "token.verify")
+	_, tokenVerify := NewSpan(authCtx, "token.verify")
 	time.Sleep(3 * time.Millisecond)
 	tokenVerify.End()
 
@@ -36,10 +36,10 @@ func TestExample_TraceVisualization(t *testing.T) {
 	time.Sleep(time.Millisecond)
 	auth.End()
 
-	dbCtx, dbQuery := Start(rootCtx, "db.query",
+	dbCtx, dbQuery := NewSpan(rootCtx, "db.query",
 		slog.String("table", "users"),
 	)
-	cacheCtx, cacheCheck := Start(rootCtx, "cache.check",
+	cacheCtx, cacheCheck := NewSpan(rootCtx, "cache.check",
 		slog.String("key", "users:list"),
 	)
 
@@ -56,10 +56,10 @@ func TestExample_TraceVisualization(t *testing.T) {
 
 	time.Sleep(time.Millisecond)
 
-	serializeCtx, serialize := Start(rootCtx, "serialize")
+	serializeCtx, serialize := NewSpan(rootCtx, "serialize")
 	time.Sleep(time.Millisecond)
 
-	_, compress := Start(serializeCtx, "compress")
+	_, compress := NewSpan(serializeCtx, "compress")
 	time.Sleep(2 * time.Millisecond)
 	compress.End()
 

@@ -12,7 +12,7 @@ func TestConcurrentSharedSpanMutations(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	ctx, started := Start(context.Background(), "shared")
+	ctx, started := NewSpan(context.Background(), "shared")
 	var wg sync.WaitGroup
 
 	for i := range 64 {
@@ -48,15 +48,15 @@ func TestConcurrentParallelChildSpans(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	rootCtx, root := Start(context.Background(), "root")
-	rootID := root.(*span).id
+	rootCtx, root := NewSpan(context.Background(), "root")
+	rootID := root.id
 
 	var wg sync.WaitGroup
 	for i := range 50 {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			ctx, child := Start(rootCtx, "child", slog.Int("i", n))
+			ctx, child := NewSpan(rootCtx, "child", slog.Int("i", n))
 			Event(ctx, "work", slog.Int("i", n))
 			child.End()
 		}(i)
@@ -86,7 +86,7 @@ func TestConcurrentParallelChildSpans(t *testing.T) {
 }
 
 func TestConcurrentInjectExtractWithIsolatedCarriers(t *testing.T) {
-	ctx, _ := Start(context.Background(), "root")
+	ctx, _ := NewSpan(context.Background(), "root")
 
 	var (
 		wg   sync.WaitGroup

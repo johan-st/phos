@@ -34,12 +34,12 @@ type legendEntry struct {
 const legendKeys = "123456789abcdefghijklmnopqrstuvwxyz"
 
 // RenderTraces renders all spans grouped by trace in a CLI-friendly timeline.
-func RenderTraces(spans []SpanData) string {
+func RenderTraces(spans []Snapshot) string {
 	if len(spans) == 0 {
 		return ""
 	}
 
-	grouped := make(map[string][]SpanData)
+	grouped := make(map[string][]Snapshot)
 	for _, span := range spans {
 		key := span.TraceID
 		if key == "" {
@@ -73,7 +73,7 @@ func RenderTraces(spans []SpanData) string {
 }
 
 // RenderTrace renders one trace as a CLI-friendly timeline.
-func RenderTrace(spans []SpanData) string {
+func RenderTrace(spans []Snapshot) string {
 	if len(spans) == 0 {
 		return ""
 	}
@@ -86,13 +86,13 @@ func RenderTrace(spans []SpanData) string {
 	return renderTrace(spans, layout)
 }
 
-func buildTreeLayout(spans []SpanData) []treeNode {
-	ordered := append([]SpanData(nil), spans...)
+func buildTreeLayout(spans []Snapshot) []treeNode {
+	ordered := append([]Snapshot(nil), spans...)
 	sortSpans(ordered)
 
-	byID := make(map[string]SpanData, len(ordered))
-	children := make(map[string][]SpanData)
-	roots := make([]SpanData, 0, len(ordered))
+	byID := make(map[string]Snapshot, len(ordered))
+	children := make(map[string][]Snapshot)
+	roots := make([]Snapshot, 0, len(ordered))
 
 	for _, span := range ordered {
 		byID[span.ID] = span
@@ -133,7 +133,7 @@ func buildTreeLayout(spans []SpanData) []treeNode {
 	return layout
 }
 
-func appendTreeNode(layout *[]treeNode, span SpanData, children map[string][]SpanData, prefix string, branch string, nextPrefix string) {
+func appendTreeNode(layout *[]treeNode, span Snapshot, children map[string][]Snapshot, prefix string, branch string, nextPrefix string) {
 	*layout = append(*layout, treeNode{
 		spanID: span.ID,
 		name:   span.Name,
@@ -153,8 +153,8 @@ func appendTreeNode(layout *[]treeNode, span SpanData, children map[string][]Spa
 	}
 }
 
-func renderTrace(spans []SpanData, layout []treeNode) string {
-	byID := make(map[string]SpanData, len(spans))
+func renderTrace(spans []Snapshot, layout []treeNode) string {
+	byID := make(map[string]Snapshot, len(spans))
 	for _, span := range spans {
 		byID[span.ID] = span
 	}
@@ -162,11 +162,11 @@ func renderTrace(spans []SpanData, layout []treeNode) string {
 	var globalStart, globalEnd time.Time
 	var traceID string
 	for _, span := range spans {
-		if globalStart.IsZero() || span.StartTime.Before(globalStart) {
-			globalStart = span.StartTime
+		if globalStart.IsZero() || span.TimeStart.Before(globalStart) {
+			globalStart = span.TimeStart
 		}
-		if globalEnd.IsZero() || span.EndTime.After(globalEnd) {
-			globalEnd = span.EndTime
+		if globalEnd.IsZero() || span.TimeEnd.After(globalEnd) {
+			globalEnd = span.TimeEnd
 		}
 		if span.Root {
 			traceID = span.TraceID
@@ -213,8 +213,8 @@ func renderTrace(spans []SpanData, layout []treeNode) string {
 			continue
 		}
 
-		startCol := scaledColumn(span.StartTime.Sub(globalStart), scaleDur, barWidth)
-		endCol := scaledColumn(span.EndTime.Sub(globalStart), scaleDur, barWidth)
+		startCol := scaledColumn(span.TimeStart.Sub(globalStart), scaleDur, barWidth)
+		endCol := scaledColumn(span.TimeEnd.Sub(globalStart), scaleDur, barWidth)
 		if endCol <= startCol {
 			endCol = startCol + 1
 		}
@@ -252,7 +252,7 @@ func renderTrace(spans []SpanData, layout []treeNode) string {
 		}
 
 		label := node.prefix + span.Name
-		dur := durMs(span.EndTime.Sub(span.StartTime))
+		dur := durMs(span.TimeEnd.Sub(span.TimeStart))
 		attrStr := fmtAttrList(span.Attrs)
 
 		fmt.Fprintf(&b, "%-*s  %-*s  %s %5.1fms", idWidth, span.ID, maxLabel, label, string(bar), dur)
@@ -290,7 +290,7 @@ func renderTrace(spans []SpanData, layout []treeNode) string {
 	return b.String()
 }
 
-func spanMarkers(span SpanData) []markerData {
+func spanMarkers(span Snapshot) []markerData {
 	markers := make([]markerData, 0, len(span.Events)+len(span.Errors))
 	for _, event := range span.Events {
 		markers = append(markers, markerData{
@@ -324,26 +324,26 @@ func markerColumn(idx, total, startCol, endCol int) int {
 	return col
 }
 
-func sortSpans(spans []SpanData) {
+func sortSpans(spans []Snapshot) {
 	sort.Slice(spans, func(i, j int) bool {
-		if spans[i].StartTime.Equal(spans[j].StartTime) {
+		if spans[i].TimeStart.Equal(spans[j].TimeStart) {
 			if spans[i].Name == spans[j].Name {
 				return spans[i].ID < spans[j].ID
 			}
 			return spans[i].Name < spans[j].Name
 		}
-		return spans[i].StartTime.Before(spans[j].StartTime)
+		return spans[i].TimeStart.Before(spans[j].TimeStart)
 	})
 }
 
-func firstStart(spans []SpanData) time.Time {
+func firstStart(spans []Snapshot) time.Time {
 	if len(spans) == 0 {
 		return time.Time{}
 	}
-	start := spans[0].StartTime
+	start := spans[0].TimeStart
 	for _, span := range spans[1:] {
-		if span.StartTime.Before(start) {
-			start = span.StartTime
+		if span.TimeStart.Before(start) {
+			start = span.TimeStart
 		}
 	}
 	return start
@@ -377,14 +377,14 @@ func kindSym(kind markerKind) string {
 	}
 }
 
-func eventDesc(event EventData) string {
+func eventDesc(event SnapshotEvent) string {
 	if len(event.Attrs) > 0 {
 		return event.Name + "  " + fmtAttrList(event.Attrs)
 	}
 	return event.Name
 }
 
-func errorDesc(err ErrorData) string {
+func errorDesc(err SnapshotError) string {
 	msg := errorMessage(err.Err)
 	if msg == "" {
 		msg = fmtAttrList(err.Attrs)

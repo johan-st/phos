@@ -8,11 +8,10 @@ import (
 
 type captureExporter struct {
 	mu    sync.Mutex
-	spans []SpanData
+	spans []Snapshot
 }
 
-func (e *captureExporter) Export(span DataViewer) {
-	data := span.View()
+func (e *captureExporter) Export(data Snapshot) {
 	data.Attrs = cloneAttrs(data.Attrs)
 	data.Events = cloneEvents(data.Events)
 	data.Errors = cloneErrorData(data.Errors)
@@ -21,11 +20,11 @@ func (e *captureExporter) Export(span DataViewer) {
 	e.spans = append(e.spans, data)
 }
 
-func (e *captureExporter) snapshot() []SpanData {
+func (e *captureExporter) snapshot() []Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	out := make([]SpanData, len(e.spans))
+	out := make([]Snapshot, len(e.spans))
 	for i, data := range e.spans {
 		data.Attrs = cloneAttrs(data.Attrs)
 		data.Events = cloneEvents(data.Events)
@@ -35,7 +34,7 @@ func (e *captureExporter) snapshot() []SpanData {
 	return out
 }
 
-func withExporter(t *testing.T, exp Exporter) func() []SpanData {
+func withExporter(t *testing.T, exp Exporter) func() []Snapshot {
 	t.Helper()
 
 	restore := SetExporter(exp)
@@ -45,20 +44,20 @@ func withExporter(t *testing.T, exp Exporter) func() []SpanData {
 	case *captureExporter:
 		return typed.snapshot
 	case *InMemExportImporter:
-		return func() []SpanData {
+		return func() []Snapshot {
 			spans := typed.Snapshot()
-			out := make([]SpanData, 0, len(spans))
+			out := make([]Snapshot, 0, len(spans))
 			for _, data := range spans {
 				out = append(out, data)
 			}
 			return out
 		}
 	default:
-		return func() []SpanData { return nil }
+		return func() []Snapshot { return nil }
 	}
 }
 
-func findSpanDataByName(t *testing.T, spans []SpanData, name string) SpanData {
+func findSpanDataByName(t *testing.T, spans []Snapshot, name string) Snapshot {
 	t.Helper()
 
 	for _, span := range spans {
@@ -67,10 +66,10 @@ func findSpanDataByName(t *testing.T, spans []SpanData, name string) SpanData {
 		}
 	}
 	t.Fatalf("span named %q not found", name)
-	return SpanData{}
+	return Snapshot{}
 }
 
-func findEventDataByName(t *testing.T, events []EventData, name string) EventData {
+func findEventDataByName(t *testing.T, events []SnapshotEvent, name string) SnapshotEvent {
 	t.Helper()
 
 	for _, event := range events {
@@ -79,7 +78,7 @@ func findEventDataByName(t *testing.T, events []EventData, name string) EventDat
 		}
 	}
 	t.Fatalf("event named %q not found", name)
-	return EventData{}
+	return SnapshotEvent{}
 }
 
 func requireAttrValue(t *testing.T, attrs []slog.Attr, key, want string) {

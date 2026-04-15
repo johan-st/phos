@@ -1,0 +1,57 @@
+version: "3"
+
+vars:
+  TOOLS_BIN: "{{.ROOT_DIR}}/.tools/bin"
+
+tasks:
+  default:
+    desc: Run the full local CI suite.
+    cmds:
+      - task: ci
+
+  build:
+    desc: Build all Go packages.
+    cmds:
+      - go build ./...
+
+  test:
+    desc: Run the Go test suite.
+    cmds:
+      - go test ./...
+
+  vet:
+    desc: Run go vet across the module.
+    cmds:
+      - go vet ./...
+
+  install-tools:
+    desc: Install static-analysis tools locally.
+    cmds:
+      - mkdir -p "{{.TOOLS_BIN}}"
+      - GOBIN="{{.TOOLS_BIN}}" go install honnef.co/go/tools/cmd/staticcheck@latest
+      - GOBIN="{{.TOOLS_BIN}}" go install golang.org/x/vuln/cmd/govulncheck@latest
+
+  staticcheck:
+    desc: Run staticcheck.
+    preconditions:
+      - sh: test -x "{{.TOOLS_BIN}}/staticcheck"
+        msg: Run `task install-tools` first.
+    cmds:
+      - "{{.TOOLS_BIN}}/staticcheck ./..."
+
+  govulncheck:
+    desc: Run govulncheck.
+    preconditions:
+      - sh: test -x "{{.TOOLS_BIN}}/govulncheck"
+        msg: Run `task install-tools` first.
+    cmds:
+      - "{{.TOOLS_BIN}}/govulncheck ./..."
+
+  ci:
+    desc: Run build, tests, and static analysis.
+    cmds:
+      - task: build
+      - task: test
+      - task: vet
+      - task: staticcheck
+      - task: govulncheck
