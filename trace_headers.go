@@ -147,30 +147,6 @@ func ExtractTraceContext(ctx context.Context, carrier Carrier) context.Context {
 	return context.WithValue(ctx, traceContextKey, traceCtx)
 }
 
-func traceIDFromContext(ctx context.Context) string {
-	if s := SpanFromContext(ctx); s != nil {
-		return s.traceIDValue()
-	}
-	if traceCtx := traceContextFromContext(ctx); traceCtx.traceID != "" {
-		return traceCtx.traceID
-	}
-	return ""
-}
-
-func traceStateFromContext(ctx context.Context) string {
-	if s := SpanFromContext(ctx); s != nil {
-		return s.traceStateValue()
-	}
-	return traceContextFromContext(ctx).traceState
-}
-
-func outgoingTraceFlags(ctx context.Context) string {
-	if s := SpanFromContext(ctx); s != nil {
-		return outgoingTraceFlagsForValue(s.traceFlagsValue())
-	}
-	return outgoingTraceFlagsForValue(traceContextFromContext(ctx).traceFlags)
-}
-
 func outgoingTraceFlagsForValue(flags string) string {
 	if !isLowerHex(flags, 2) {
 		return "00"

@@ -2,9 +2,6 @@ package phos
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"os"
 	"sync"
 	"sync/atomic"
 )
@@ -22,14 +19,11 @@ var (
 	closedSignalMu   sync.Mutex
 	closedSignal     = make(chan struct{})
 	closedSignalOnce sync.Once
-
-	rejectedSpanSignalMu     sync.Mutex
-	rejectedSpanSignalWriter io.Writer = os.Stderr
 )
 
 // DrainAndClose begins shutdown admission control without blocking.
 //
-// Once draining has started, new root spans are rejected while child spans on
+// Once draining has started, new root spans return noop spans while child spans on
 // still-open local parents are allowed. If ctx is canceled before all open
 // roots end naturally, Phos closes the remaining trees bottom-up and records
 // the event "phos.Shutdown timeout reached" on affected spans.
@@ -117,21 +111,6 @@ func maybeFinalizeClosedLocked() {
 	})
 }
 
-func signalRejectedSpan(action, reason, name string) {
-	rejectedSpanSignalMu.Lock()
-	writer := rejectedSpanSignalWriter
-	rejectedSpanSignalMu.Unlock()
-	if writer == nil {
-		return
-	}
-
-	if name == "" {
-		_, _ = fmt.Fprintf(writer, "phos: %s on rejected span (%s)\n", action, reason)
-		return
-	}
-	_, _ = fmt.Fprintf(writer, "phos: %s on rejected span %q (%s)\n", action, name, reason)
-}
-
 func resetLifecycleForTesting() {
 	lifecycleGen.Add(1)
 	drainingState.Store(false)
@@ -143,10 +122,6 @@ func resetLifecycleForTesting() {
 
 	closedSignalMu.Lock()
 	closedSignal = make(chan struct{})
-	closedSignalMu.Unlock()
 	closedSignalOnce = sync.Once{}
-
-	rejectedSpanSignalMu.Lock()
-	rejectedSpanSignalWriter = os.Stderr
-	rejectedSpanSignalMu.Unlock()
+	closedSignalMu.Unlock()
 }

@@ -3,7 +3,6 @@ package phos
 import (
 	"context"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 )
@@ -39,20 +38,28 @@ func TestEndedSpanIsAbsentFromContext(t *testing.T) {
 func TestDrainAndCloseBlocksNewRootsButAllowsChildren(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
-	signals := captureRejectedSignals(t)
 
 	rootCtx, root := NewSpan(context.Background(), "root")
 
 	DrainAndClose(context.Background())
 
-	_, blocked := NewSpan(context.Background(), "blocked-root")
+	blockedCtx, blocked := NewSpan(context.Background(), "blocked-root")
 	if blocked == nil {
-		t.Fatal("blocked root span = nil, want rejected span")
+		t.Fatal("blocked root span = nil, want noop span")
+	}
+	if got := SpanFromContext(blockedCtx); got != nil {
+		t.Fatalf("SpanFromContext(blockedCtx) = %#v, want nil for noop span", got)
 	}
 
 	childCtx, child := NewSpan(rootCtx, "child")
 	Event(childCtx, "allowed")
 	child.End()
+
+	Attrs(blockedCtx, slog.String("ignored", "value"))
+	Event(blockedCtx, "ignored")
+	Error(blockedCtx, errInvalidTraceID)
+	Fail(blockedCtx, errInvalidTraceID)
+	blocked.End()
 	root.End()
 	WaitForClosed()
 
@@ -60,20 +67,16 @@ func TestDrainAndCloseBlocksNewRootsButAllowsChildren(t *testing.T) {
 	if len(spans) != 2 {
 		t.Fatalf("len(spans) = %d, want 2", len(spans))
 	}
-	if strings.Contains(RenderTraces(spans), "blocked-root") {
-		t.Fatal("blocked root span should not be exported")
-	}
-
-	output := signals.String()
-	if !strings.Contains(output, "blocked-root") || !strings.Contains(output, "after drain") {
-		t.Fatalf("signals = %q, want blocked root rejection", output)
+	for _, span := range spans {
+		if span.Name == "blocked-root" {
+			t.Fatal("blocked root span should not be exported")
+		}
 	}
 }
 
-func TestRejectedSpanSignalsOnAllOperations(t *testing.T) {
+func TestBlockedNewSpanIsNoopAcrossOperations(t *testing.T) {
 	exp := &captureExporter{}
-	withExporter(t, exp)
-	signals := captureRejectedSignals(t)
+	getSpans := withExporter(t, exp)
 
 	_, root := NewSpan(context.Background(), "root")
 	DrainAndClose(context.Background())
@@ -84,6 +87,9 @@ func TestRejectedSpanSignalsOnAllOperations(t *testing.T) {
 	Error(blockedCtx, errInvalidTraceID)
 	Fail(blockedCtx, errInvalidTraceID)
 	blocked.End()
+	if got := blocked.Snapshot(); got.Name != "blocked" {
+		t.Fatalf("Snapshot().Name = %q, want %q", got.Name, "blocked")
+	}
 
 	cancelled, cancel := context.WithCancel(context.Background())
 	DrainAndClose(cancelled)
@@ -94,20 +100,14 @@ func TestRejectedSpanSignalsOnAllOperations(t *testing.T) {
 
 	_, closedBlocked := NewSpan(context.Background(), "closed-blocked")
 	closedBlocked.End()
-
-	output := signals.String()
-	for _, want := range []string{
-		`NewSpan on rejected span "blocked" (after drain)`,
-		`Attrs on rejected span "blocked" (after drain)`,
-		`Event on rejected span "blocked" (after drain)`,
-		`Error on rejected span "blocked" (after drain)`,
-		`Fail on rejected span "blocked" (after drain)`,
-		`End on rejected span "blocked" (after drain)`,
-		`NewSpan on rejected span "closed-blocked" (after close)`,
-		`End on rejected span "closed-blocked" (after close)`,
-	} {
-		if !strings.Contains(output, want) {
-			t.Fatalf("signals = %q, want substring %q", output, want)
+	if got := getSpans(); len(got) != 1 || got[0].Name != "root" {
+		t.Fatalf("exported spans = %#v, want only root", got)
+	}
+	for _, name := range []string{"blocked", "closed-blocked"} {
+		for _, span := range getSpans() {
+			if span.Name == name {
+				t.Fatalf("%s should not be exported", name)
+			}
 		}
 	}
 }
@@ -183,7 +183,7 @@ func TestWaitForClosedBlocksUntilDrainCompletes(t *testing.T) {
 	select {
 	case <-done:
 		t.Fatal("WaitForClosed returned before root ended")
-	case <-time.After(20 * time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 	}
 
 	root.End()

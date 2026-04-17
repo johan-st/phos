@@ -1,7 +1,6 @@
 package phos
 
 import (
-	"bytes"
 	"log/slog"
 	"sync"
 	"testing"
@@ -63,24 +62,6 @@ func withLifecycle(t *testing.T) {
 	t.Helper()
 	resetLifecycleForTesting()
 	t.Cleanup(resetLifecycleForTesting)
-}
-
-func captureRejectedSignals(t *testing.T) *bytes.Buffer {
-	t.Helper()
-
-	buf := &bytes.Buffer{}
-	rejectedSpanSignalMu.Lock()
-	prev := rejectedSpanSignalWriter
-	rejectedSpanSignalWriter = buf
-	rejectedSpanSignalMu.Unlock()
-
-	t.Cleanup(func() {
-		rejectedSpanSignalMu.Lock()
-		rejectedSpanSignalWriter = prev
-		rejectedSpanSignalMu.Unlock()
-	})
-
-	return buf
 }
 
 func findSpanDataByName(t *testing.T, spans []Snapshot, name string) Snapshot {

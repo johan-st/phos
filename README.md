@@ -15,6 +15,7 @@ defer span.End()
 
 phos.Attrs(ctx, slog.String("user", id))
 phos.Event(ctx, "cache.hit")
+err := doSomething()
 if err != nil {
     phos.Fail(ctx, err, slog.String("phase", "handler"))
     return
@@ -40,8 +41,8 @@ phos.DrainAndClose(ctx)
 phos.WaitForClosed()
 ```
 
-While draining, new root spans are rejected, but child spans on still-open local
-parents are still allowed. If the drain context expires first, Phos closes the
+While draining, new root spans return no-op spans, but child spans on still-open
+local parents are still allowed. If the drain context expires first, Phos closes the
 remaining open span trees bottom-up and records the event
 `"phos.Shutdown timeout reached"` on affected spans.
 

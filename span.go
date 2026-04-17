@@ -8,26 +8,26 @@ import (
 )
 
 type Span struct {
-	mu             sync.Mutex
-	id             string
-	parentID       string
-	traceID        string
-	traceFlags     string
-	traceState     string
-	timeStart      time.Time
-	timeEnd        time.Time
-	kind           SpanKind
-	failed         bool
-	name           string
-	links          []link
-	events         []SnapshotEvent
-	errors         []SnapshotError
-	attrs          []slog.Attr
-	exporter       Exporter
-	parent         *Span
-	children       map[*Span]struct{}
-	closing        bool
-	rejectedReason string
+	mu         sync.Mutex
+	id         string
+	parentID   string
+	traceID    string
+	traceFlags string
+	traceState string
+	timeStart  time.Time
+	timeEnd    time.Time
+	kind       SpanKind
+	failed     bool
+	name       string
+	links      []link
+	events     []SnapshotEvent
+	errors     []SnapshotError
+	attrs      []slog.Attr
+	exporter   Exporter
+	parent     *Span
+	children   map[*Span]struct{}
+	closing    bool
+	noop       bool
 }
 
 func NewSpan(ctx context.Context, name string, opts ...SpanOption) (context.Context, *Span) {
@@ -35,7 +35,7 @@ func NewSpan(ctx context.Context, name string, opts ...SpanOption) (context.Cont
 	cfg := newSpanConfig(opts)
 
 	if closedState.Load() {
-		return newRejectedSpan(ctx, name, cfg, "after close")
+		return newNoopSpan(ctx, name, cfg)
 	}
 
 	if parent := activeSpanFromContext(ctx); parent != nil {
@@ -43,12 +43,12 @@ func NewSpan(ctx context.Context, name string, opts ...SpanOption) (context.Cont
 		if span != nil {
 			return context.WithValue(ctx, activeSpanKey, span), span
 		}
-		return newRejectedSpan(ctx, name, cfg, rejectedCreationReason())
+		return newNoopSpan(ctx, name, cfg)
 	}
 
 	traceCtx := traceContextFromContext(ctx)
 	if drainingState.Load() {
-		return newRejectedSpan(ctx, name, cfg, "after drain")
+		return newNoopSpan(ctx, name, cfg)
 	}
 
 	traceID := traceCtx.traceID
@@ -78,7 +78,7 @@ func NewSpan(ctx context.Context, name string, opts ...SpanOption) (context.Cont
 		children:   map[*Span]struct{}{},
 	}
 	if !registerRootSpan(span) {
-		return newRejectedSpan(ctx, name, cfg, rejectedCreationReason())
+		return newNoopSpan(ctx, name, cfg)
 	}
 	span.applyTraceContextDiagnostics(traceCtx.diagnostics)
 	return context.WithValue(ctx, activeSpanKey, span), span
@@ -95,8 +95,7 @@ func (s *Span) applyTraceContextDiagnostics(diagnostics []traceContextDiagnostic
 }
 
 func (s *Span) Attrs(attrs ...slog.Attr) {
-	if s.isRejected() {
-		s.signalRejected("Attrs")
+	if s.isNoop() {
 		return
 	}
 	if len(attrs) == 0 {
@@ -111,8 +110,7 @@ func (s *Span) Attrs(attrs ...slog.Attr) {
 }
 
 func (s *Span) Event(name string, attrs ...slog.Attr) {
-	if s.isRejected() {
-		s.signalRejected("Event")
+	if s.isNoop() {
 		return
 	}
 	s.mu.Lock()
@@ -128,8 +126,7 @@ func (s *Span) Event(name string, attrs ...slog.Attr) {
 }
 
 func (s *Span) Error(err error, attrs ...slog.Attr) {
-	if s.isRejected() {
-		s.signalRejected("Error")
+	if s.isNoop() {
 		return
 	}
 	if err == nil {
@@ -147,8 +144,7 @@ func (s *Span) Error(err error, attrs ...slog.Attr) {
 }
 
 func (s *Span) Fail(err error, attrs ...slog.Attr) {
-	if s.isRejected() {
-		s.signalRejected("Fail")
+	if s.isNoop() {
 		return
 	}
 	if err == nil {
@@ -161,8 +157,7 @@ func (s *Span) Fail(err error, attrs ...slog.Attr) {
 }
 
 func (s *Span) End() {
-	if s.isRejected() {
-		s.signalRejected("End")
+	if s.isNoop() {
 		return
 	}
 	s.endTreeWith(endTreeOptions{}, false, "")
@@ -250,8 +245,7 @@ func (s *Span) finishSpan(opts endTreeOptions, failed bool, eventName string) {
 }
 
 func (s *Span) Snapshot() Snapshot {
-	if s.isRejected() {
-		s.signalRejected("Snapshot")
+	if s.isNoop() {
 		return Snapshot{
 			Name:      s.name,
 			TimeStart: s.timeStart,
@@ -275,17 +269,6 @@ func (s *Span) Snapshot() Snapshot {
 		Links:     snapshotLinks(s.links),
 		Events:    cloneEvents(s.events),
 		Errors:    cloneErrorData(s.errors),
-	}
-}
-
-func (s *Span) parentTraceData() (string, string, traceContext) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	return s.id, s.traceID, traceContext{
-		traceID:    s.traceID,
-		traceFlags: s.traceFlags,
-		traceState: s.traceState,
 	}
 }
 
@@ -313,27 +296,16 @@ func (s *Span) spanIDValue() string {
 	return s.id
 }
 
-func newRejectedSpan(ctx context.Context, name string, cfg spanConfig, reason string) (context.Context, *Span) {
+func newNoopSpan(ctx context.Context, name string, cfg spanConfig) (context.Context, *Span) {
 	span := &Span{
-		timeStart:      time.Now(),
-		kind:           cfg.kind,
-		name:           name,
-		links:          cloneLinks(cfg.links),
-		attrs:          cloneAttrs(cfg.attrs),
-		rejectedReason: reason,
+		timeStart: time.Now(),
+		kind:      cfg.kind,
+		name:      name,
+		links:     cloneLinks(cfg.links),
+		attrs:     cloneAttrs(cfg.attrs),
+		noop:      true,
 	}
-	span.signalRejected("NewSpan")
 	return context.WithValue(ctx, activeSpanKey, span), span
-}
-
-func rejectedCreationReason() string {
-	if closedState.Load() {
-		return "after close"
-	}
-	if drainingState.Load() {
-		return "after drain"
-	}
-	return "while parent is closing"
 }
 
 func (s *Span) newChildSpan(name string, cfg spanConfig) *Span {
@@ -349,7 +321,7 @@ func (s *Span) newChildSpan(name string, cfg spanConfig) *Span {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.rejectedReason != "" || s.closing || !s.timeEnd.IsZero() || closedState.Load() {
+	if s.noop || s.closing || !s.timeEnd.IsZero() || closedState.Load() {
 		return nil
 	}
 	child.parent = s
@@ -377,7 +349,7 @@ func (s *Span) isActiveParent() bool {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.rejectedReason == "" && !s.closing && s.timeEnd.IsZero()
+	return !s.noop && !s.closing && s.timeEnd.IsZero()
 }
 
 func (s *Span) isEnded() bool {
@@ -389,19 +361,11 @@ func (s *Span) isEnded() bool {
 	return !s.timeEnd.IsZero()
 }
 
-func (s *Span) isRejected() bool {
+func (s *Span) isNoop() bool {
 	if s == nil {
 		return false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.rejectedReason != ""
-}
-
-func (s *Span) signalRejected(action string) {
-	s.mu.Lock()
-	reason := s.rejectedReason
-	name := s.name
-	s.mu.Unlock()
-	signalRejectedSpan(action, reason, name)
+	return s.noop
 }

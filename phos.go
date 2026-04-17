@@ -35,8 +35,10 @@ type Exporter interface {
 	Export(snapshot Snapshot)
 }
 
+// NoopExporter is an exporter that does nothing.
 type NoopExporter struct{}
 
+// Export is a no-op.
 func (e *NoopExporter) Export(_ Snapshot) {
 }
 
@@ -58,6 +60,8 @@ func SetExporter(exp Exporter) func() {
 	}
 }
 
+// WithExporter attaches an exporter to the given context.
+// If the exporter is nil, a no-op exporter is attached.
 func WithExporter(ctx context.Context, exp Exporter) context.Context {
 	ctx = normalizeContext(ctx)
 	if exp == nil {
@@ -81,6 +85,7 @@ type traceContextDiagnostic struct {
 	reason string
 }
 
+// Attrs records attributes in the span. Attributes are key-value pairs that describe the span.
 func Attrs(ctx context.Context, attrs ...slog.Attr) {
 	span := spanForMutationFromContext(ctx)
 	if span == nil {
@@ -90,6 +95,7 @@ func Attrs(ctx context.Context, attrs ...slog.Attr) {
 	span.Attrs(attrs...)
 }
 
+// Event records an event in the span. An event is a non-terminal, timestamped occurrence in the span.
 func Event(ctx context.Context, name string, attrs ...slog.Attr) {
 	span := spanForMutationFromContext(ctx)
 	if span == nil {
@@ -99,6 +105,7 @@ func Event(ctx context.Context, name string, attrs ...slog.Attr) {
 	span.Event(name, attrs...)
 }
 
+// Error records an error in the span. An error is a terminal, timestamped occurrence in the span.
 func Error(ctx context.Context, err error, attrs ...slog.Attr) {
 	span := spanForMutationFromContext(ctx)
 	if span == nil {
@@ -108,6 +115,7 @@ func Error(ctx context.Context, err error, attrs ...slog.Attr) {
 	span.Error(err, attrs...)
 }
 
+// Fail records a terminal error and ends the span.
 func Fail(ctx context.Context, err error, attrs ...slog.Attr) {
 	span := spanForMutationFromContext(ctx)
 	if span == nil {
@@ -117,12 +125,14 @@ func Fail(ctx context.Context, err error, attrs ...slog.Attr) {
 	span.Fail(err, attrs...)
 }
 
-// -- Internal --
-// -- span --
-
+// SpanFromContext returns the active span for the given context.
+// If the context does not have an active span, nil is returned.
 func SpanFromContext(ctx context.Context) *Span {
 	return activeSpanFromContext(ctx)
 }
+
+// -- Internal --
+// -- span --
 
 func spanFromContextValue(ctx context.Context) *Span {
 	if ctx == nil {

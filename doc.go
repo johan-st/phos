@@ -17,8 +17,8 @@
 // context only carries an ended span.
 //
 // Call [DrainAndClose] to start shutdown admission control. While draining, new
-// root spans are rejected but child spans on still-open local parents are still
-// allowed. Call [WaitForClosed] before process exit to wait until all open
+// root spans return no-op spans but child spans on still-open local parents are
+// still allowed. Call [WaitForClosed] before process exit to wait until all open
 // local span trees have closed.
 //
 // Propagation helpers [InjectTraceContext] and [ExtractTraceContext] work with

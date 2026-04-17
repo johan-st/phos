@@ -20,8 +20,9 @@ func TestSpanDataJSONShape(t *testing.T) {
 	child.End()
 	root.End()
 
-	rootJSON := decodeJSONMap(t, mustJSON(t, findSpanDataByName(t, getSpans(), "root")))
-	childJSON := decodeJSONMap(t, mustJSON(t, findSpanDataByName(t, getSpans(), "child")))
+	spans := getSpans()
+	rootJSON := decodeJSONMap(t, mustJSON(t, findSpanDataByName(t, spans, "root")))
+	childJSON := decodeJSONMap(t, mustJSON(t, findSpanDataByName(t, spans, "child")))
 
 	if rootJSON["name"] != "root" {
 		t.Fatalf("root name = %#v, want %q", rootJSON["name"], "root")
@@ -46,12 +47,50 @@ func TestSpanDataJSONShape(t *testing.T) {
 	if errorsJSON[0].(map[string]any)["message"] != "boom" {
 		t.Fatalf("root error message = %#v, want %q", errorsJSON[0].(map[string]any)["message"], "boom")
 	}
+	rootAttrs, ok := rootJSON["attrs"].([]any)
+	if !ok {
+		t.Fatalf("root attrs type = %T, want []any", rootJSON["attrs"])
+	}
+	if len(rootAttrs) != 1 {
+		t.Fatalf("len(root attrs) = %d, want 1", len(rootAttrs))
+	}
+	rootAttr, ok := rootAttrs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("root attrs[0] type = %T, want map[string]any", rootAttrs[0])
+	}
+	if rootAttr["Key"] != "service" || rootAttr["Value"] != "api" {
+		t.Fatalf("root attr = %#v, want service=api", rootAttr)
+	}
+	if rootRoot, ok := rootJSON["root"]; ok && rootRoot != true {
+		t.Fatalf("root root = %#v, want true", rootRoot)
+	}
 
 	if childJSON["name"] != "child" {
 		t.Fatalf("child name = %#v, want %q", childJSON["name"], "child")
 	}
 	if childJSON["parent_id"] == "" {
 		t.Fatal("child parent_id is empty")
+	}
+	childAttrs, ok := childJSON["attrs"].([]any)
+	if !ok {
+		t.Fatalf("child attrs type = %T, want []any", childJSON["attrs"])
+	}
+	if len(childAttrs) != 2 {
+		t.Fatalf("len(child attrs) = %d, want 2", len(childAttrs))
+	}
+	childAttr0, ok := childAttrs[0].(map[string]any)
+	if !ok {
+		t.Fatalf("child attrs[0] type = %T, want map[string]any", childAttrs[0])
+	}
+	if childAttr0["Key"] != "component" || childAttr0["Value"] != "repo" {
+		t.Fatalf("child attrs[0] = %#v, want component=repo", childAttr0)
+	}
+	childAttr1, ok := childAttrs[1].(map[string]any)
+	if !ok {
+		t.Fatalf("child attrs[1] type = %T, want map[string]any", childAttrs[1])
+	}
+	if childAttr1["Key"] != "cache" || childAttr1["Value"] != "miss" {
+		t.Fatalf("child attrs[1] = %#v, want cache=miss", childAttr1)
 	}
 }
 
