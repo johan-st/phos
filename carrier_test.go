@@ -10,8 +10,8 @@ import (
 func TestHTTPHeaderCarrierNilHeaderIsSafe(t *testing.T) {
 	carrier := HTTPHeaderCarrier{}
 
-	if got, ok := carrier.Get(TraceParentHeader); ok || got != "" {
-		t.Fatalf("Get() = (%q, %v), want (\"\", false)", got, ok)
+	if got := carrier.Get(TraceParentHeader); got != "" {
+		t.Fatalf("Get() = %q, want empty string", got)
 	}
 
 	carrier.Set(TraceParentHeader, validVersion00TraceParent)
@@ -31,13 +31,13 @@ func TestMapCarrierGetPrecedenceAndKeys(t *testing.T) {
 		"A-Key":           "a",
 	}
 
-	traceParent, ok := carrier.Get(TraceParentHeader)
-	if !ok || traceParent != validVersion00TraceParent {
-		t.Fatalf("Get(traceparent) = (%q, %v), want (%q, true)", traceParent, ok, validVersion00TraceParent)
+	traceParent := carrier.Get(TraceParentHeader)
+	if traceParent != validVersion00TraceParent {
+		t.Fatalf("Get(traceparent) = %q, want %q", traceParent, validVersion00TraceParent)
 	}
-	traceState, ok := carrier.Get(TraceStateHeader)
-	if !ok || traceState != "lowercase=1" {
-		t.Fatalf("Get(tracestate) = (%q, %v), want (%q, true)", traceState, ok, "lowercase=1")
+	traceState := carrier.Get(TraceStateHeader)
+	if traceState != "lowercase=1" {
+		t.Fatalf("Get(tracestate) = %q, want %q", traceState, "lowercase=1")
 	}
 
 	wantKeys := []string{"A-Key", "TraceParent", "TraceState", "Z-Key", "traceparent", "tracestate"}
@@ -52,13 +52,13 @@ func TestMapCarrierGetFallsBackToCaseInsensitiveLookup(t *testing.T) {
 		"TRACESTATE":  "rojo=1",
 	}
 
-	traceParent, ok := carrier.Get(TraceParentHeader)
-	if !ok || traceParent != validVersion00TraceParent {
-		t.Fatalf("Get(traceparent) = (%q, %v), want (%q, true)", traceParent, ok, validVersion00TraceParent)
+	traceParent := carrier.Get(TraceParentHeader)
+	if traceParent != validVersion00TraceParent {
+		t.Fatalf("Get(traceparent) = %q, want %q", traceParent, validVersion00TraceParent)
 	}
-	traceState, ok := carrier.Get(TraceStateHeader)
-	if !ok || traceState != "rojo=1" {
-		t.Fatalf("Get(tracestate) = (%q, %v), want (%q, true)", traceState, ok, "rojo=1")
+	traceState := carrier.Get(TraceStateHeader)
+	if traceState != "rojo=1" {
+		t.Fatalf("Get(tracestate) = %q, want %q", traceState, "rojo=1")
 	}
 }
 
@@ -68,9 +68,9 @@ func TestHTTPHeaderCarrierGetTraceStateValues(t *testing.T) {
 	headers.Add("TraceState", "congo=2")
 
 	carrier := HTTPHeaderCarrier{Header: headers}
-	got, ok := carrier.Get(TraceStateHeader)
-	if !ok || got != "rojo=1,congo=2" {
-		t.Fatalf("Get(tracestate) = (%q, %v), want (%q, true)", got, ok, "rojo=1,congo=2")
+	got := carrier.Get(TraceStateHeader)
+	if got != "rojo=1,congo=2" {
+		t.Fatalf("Get(tracestate) = %q, want %q", got, "rojo=1,congo=2")
 	}
 }
 
@@ -114,9 +114,9 @@ func TestInjectAndExtractIgnoreNilCarrier(t *testing.T) {
 	InjectTraceContext(ctx, nil)
 
 	extracted := ExtractTraceContext(ctx, nil)
-	extractedSpan := spanFromContext(extracted)
+	extractedSpan := SpanFromContext(extracted)
 	if extractedSpan == nil {
-		t.Fatalf("spanFromContext(extracted) = nil, want existing span")
+		t.Fatalf("SpanFromContext(extracted) = nil, want existing span")
 	}
 	if extractedSpan.spanIDValue() != span.spanIDValue() {
 		t.Fatalf("extracted span id = %q, want %q", extractedSpan.spanIDValue(), span.spanIDValue())

@@ -17,8 +17,10 @@ func TestExample_TraceVisualization(t *testing.T) {
 	getSpans := withExporter(t, exp)
 
 	rootCtx, root := NewSpan(context.Background(), "http.request",
-		slog.String("method", "GET"),
-		slog.String("path", "/api/users"),
+		WithAttrs(
+			slog.String("method", "GET"),
+			slog.String("path", "/api/users"),
+		),
 	)
 	Event(rootCtx, "received")
 	time.Sleep(2 * time.Millisecond)
@@ -37,10 +39,10 @@ func TestExample_TraceVisualization(t *testing.T) {
 	auth.End()
 
 	dbCtx, dbQuery := NewSpan(rootCtx, "db.query",
-		slog.String("table", "users"),
+		WithAttrs(slog.String("table", "users")),
 	)
 	cacheCtx, cacheCheck := NewSpan(rootCtx, "cache.check",
-		slog.String("key", "users:list"),
+		WithAttrs(slog.String("key", "users:list")),
 	)
 
 	Event(dbCtx, "rows", slog.Int("count", 42))

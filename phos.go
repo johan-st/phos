@@ -6,11 +6,11 @@ import (
 	"sync"
 )
 
-type spanKeyType struct{}
+type activeSpanKeyType struct{}
 type traceContextKeyType struct{}
 type exporterContextKeyType struct{}
 
-var spanKey = spanKeyType{}
+var activeSpanKey = activeSpanKeyType{}
 var traceContextKey = traceContextKeyType{}
 var exporterContextKey = exporterContextKeyType{}
 
@@ -25,6 +25,12 @@ func loadGlobalExporter() Exporter {
 	return exporter
 }
 
+// Exporter receives completed span snapshots.
+//
+// Export must be safe for concurrent use. Phos considers export complete when
+// Export returns, so exporters should avoid blocking indefinitely. Any
+// exporter-specific buffering or shutdown coordination is owned by the
+// exporter implementation, not Phos.
 type Exporter interface {
 	Export(snapshot Snapshot)
 }
@@ -75,19 +81,8 @@ type traceContextDiagnostic struct {
 	reason string
 }
 
-func InSpan(ctx context.Context, name string, fn func(context.Context), attrs ...slog.Attr) {
-	ctx, span := NewSpan(ctx, name, attrs...)
-	defer span.End()
-	fn(ctx)
-}
-func InSpanE(ctx context.Context, name string, fn func(context.Context) error, attrs ...slog.Attr) error {
-	ctx, span := NewSpan(ctx, name, attrs...)
-	defer span.End()
-	return fn(ctx)
-}
-
 func Attrs(ctx context.Context, attrs ...slog.Attr) {
-	span := spanFromContext(ctx)
+	span := spanForMutationFromContext(ctx)
 	if span == nil {
 		return
 	}
@@ -96,7 +91,7 @@ func Attrs(ctx context.Context, attrs ...slog.Attr) {
 }
 
 func Event(ctx context.Context, name string, attrs ...slog.Attr) {
-	span := spanFromContext(ctx)
+	span := spanForMutationFromContext(ctx)
 	if span == nil {
 		return
 	}
@@ -105,7 +100,7 @@ func Event(ctx context.Context, name string, attrs ...slog.Attr) {
 }
 
 func Error(ctx context.Context, err error, attrs ...slog.Attr) {
-	span := spanFromContext(ctx)
+	span := spanForMutationFromContext(ctx)
 	if span == nil {
 		return
 	}
@@ -113,26 +108,52 @@ func Error(ctx context.Context, err error, attrs ...slog.Attr) {
 	span.Error(err, attrs...)
 }
 
-func Fail(ctx context.Context) {
-	span := spanFromContext(ctx)
+func Fail(ctx context.Context, err error, attrs ...slog.Attr) {
+	span := spanForMutationFromContext(ctx)
 	if span == nil {
 		return
 	}
 
-	span.Fail()
+	span.Fail(err, attrs...)
 }
 
 // -- Internal --
 // -- span --
 
-func spanFromContext(ctx context.Context) *Span {
+func SpanFromContext(ctx context.Context) *Span {
+	return activeSpanFromContext(ctx)
+}
+
+func spanFromContextValue(ctx context.Context) *Span {
 	if ctx == nil {
 		return nil
 	}
-	if span, ok := ctx.Value(spanKey).(*Span); ok {
+	if span, ok := ctx.Value(activeSpanKey).(*Span); ok {
 		return span
 	}
 	return nil
+}
+
+func activeSpanFromContext(ctx context.Context) *Span {
+	span := spanFromContextValue(ctx)
+	if span == nil {
+		return nil
+	}
+	if span.isActiveParent() {
+		return span
+	}
+	return nil
+}
+
+func spanForMutationFromContext(ctx context.Context) *Span {
+	span := spanFromContextValue(ctx)
+	if span == nil {
+		return nil
+	}
+	if span.isEnded() {
+		return nil
+	}
+	return span
 }
 
 func traceContextFromContext(ctx context.Context) traceContext {

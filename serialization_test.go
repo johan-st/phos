@@ -12,10 +12,10 @@ func TestSpanDataJSONShape(t *testing.T) {
 	exp := &captureExporter{}
 	getSpans := withExporter(t, exp)
 
-	rootCtx, root := NewSpan(context.Background(), "root", slog.String("service", "api"))
+	rootCtx, root := NewSpan(context.Background(), "root", WithAttrs(slog.String("service", "api")))
 	Event(rootCtx, "query", slog.String("table", "users"))
 	Error(rootCtx, errors.New("boom"), slog.String("phase", "db"))
-	childCtx, child := NewSpan(rootCtx, "child", slog.String("component", "repo"))
+	childCtx, child := NewSpan(rootCtx, "child", WithAttrs(slog.String("component", "repo")))
 	Attrs(childCtx, slog.String("cache", "miss"))
 	child.End()
 	root.End()
@@ -25,9 +25,6 @@ func TestSpanDataJSONShape(t *testing.T) {
 
 	if rootJSON["name"] != "root" {
 		t.Fatalf("root name = %#v, want %q", rootJSON["name"], "root")
-	}
-	if rootJSON["root"] != true {
-		t.Fatalf("root root = %#v, want true", rootJSON["root"])
 	}
 	if rootJSON["parent_id"] != "" {
 		t.Fatalf("root parent_id = %#v, want empty", rootJSON["parent_id"])
@@ -52,9 +49,6 @@ func TestSpanDataJSONShape(t *testing.T) {
 
 	if childJSON["name"] != "child" {
 		t.Fatalf("child name = %#v, want %q", childJSON["name"], "child")
-	}
-	if childJSON["root"] != false {
-		t.Fatalf("child root = %#v, want false", childJSON["root"])
 	}
 	if childJSON["parent_id"] == "" {
 		t.Fatal("child parent_id is empty")

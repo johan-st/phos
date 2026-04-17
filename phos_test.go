@@ -1,6 +1,7 @@
 package phos
 
 import (
+	"bytes"
 	"log/slog"
 	"sync"
 	"testing"
@@ -36,6 +37,7 @@ func (e *captureExporter) snapshot() []Snapshot {
 
 func withExporter(t *testing.T, exp Exporter) func() []Snapshot {
 	t.Helper()
+	withLifecycle(t)
 
 	restore := SetExporter(exp)
 	t.Cleanup(restore)
@@ -45,7 +47,7 @@ func withExporter(t *testing.T, exp Exporter) func() []Snapshot {
 		return typed.snapshot
 	case *InMemExportImporter:
 		return func() []Snapshot {
-			spans := typed.Snapshot()
+			spans := typed.Spans()
 			out := make([]Snapshot, 0, len(spans))
 			for _, data := range spans {
 				out = append(out, data)
@@ -55,6 +57,30 @@ func withExporter(t *testing.T, exp Exporter) func() []Snapshot {
 	default:
 		return func() []Snapshot { return nil }
 	}
+}
+
+func withLifecycle(t *testing.T) {
+	t.Helper()
+	resetLifecycleForTesting()
+	t.Cleanup(resetLifecycleForTesting)
+}
+
+func captureRejectedSignals(t *testing.T) *bytes.Buffer {
+	t.Helper()
+
+	buf := &bytes.Buffer{}
+	rejectedSpanSignalMu.Lock()
+	prev := rejectedSpanSignalWriter
+	rejectedSpanSignalWriter = buf
+	rejectedSpanSignalMu.Unlock()
+
+	t.Cleanup(func() {
+		rejectedSpanSignalMu.Lock()
+		rejectedSpanSignalWriter = prev
+		rejectedSpanSignalMu.Unlock()
+	})
+
+	return buf
 }
 
 func findSpanDataByName(t *testing.T, spans []Snapshot, name string) Snapshot {

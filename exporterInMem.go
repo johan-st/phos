@@ -16,6 +16,7 @@ func NewInMemExportImporter() *InMemExportImporter {
 
 func (e *InMemExportImporter) Export(data Snapshot) {
 	data.Attrs = cloneAttrs(data.Attrs)
+	data.Links = cloneSnapshotLinks(data.Links)
 	data.Events = cloneEvents(data.Events)
 	data.Errors = cloneErrorData(data.Errors)
 	e.mu.Lock()
@@ -23,14 +24,15 @@ func (e *InMemExportImporter) Export(data Snapshot) {
 	e.spans[data.ID] = data
 }
 
-// Snapshot returns a deep copy of all exported spans keyed by span ID.
-func (e *InMemExportImporter) Snapshot() map[string]Snapshot {
+// Spans returns a deep copy of all exported spans keyed by span ID.
+func (e *InMemExportImporter) Spans() map[string]Snapshot {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
 	out := make(map[string]Snapshot, len(e.spans))
 	for id, data := range e.spans {
 		data.Attrs = cloneAttrs(data.Attrs)
+		data.Links = cloneSnapshotLinks(data.Links)
 		data.Events = cloneEvents(data.Events)
 		data.Errors = cloneErrorData(data.Errors)
 		out[id] = data

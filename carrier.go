@@ -9,7 +9,7 @@ import (
 // https://www.w3.org/TR/trace-context
 
 type Carrier interface {
-	Get(key string) (string, bool)
+	Get(key string) string
 	Set(key string, value string)
 	Keys() []string
 }
@@ -18,22 +18,21 @@ type HTTPHeaderCarrier struct {
 	Header http.Header
 }
 
-func (c HTTPHeaderCarrier) Get(key string) (string, bool) {
+func (c HTTPHeaderCarrier) Get(key string) string {
 	if c.Header == nil {
-		return "", false
+		return ""
 	}
 	if strings.EqualFold(key, TraceStateHeader) {
 		values := c.Header[textprotoCanonicalMIMEHeaderKey(key)]
 		if len(values) == 0 {
-			return "", false
+			return ""
 		}
 		if len(values) == 1 {
-			return values[0], true
+			return values[0]
 		}
-		return joinComma(values), true
+		return joinComma(values)
 	}
-	v := c.Header.Get(key)
-	return v, v != ""
+	return c.Header.Get(key)
 }
 
 func (c HTTPHeaderCarrier) Set(key string, value string) {
@@ -57,29 +56,26 @@ func (c HTTPHeaderCarrier) Keys() []string {
 
 type MapCarrier map[string]string
 
-func (c MapCarrier) Get(key string) (string, bool) {
-	v, ok := c[key]
-	if ok {
-		return v, true
+func (c MapCarrier) Get(key string) string {
+	if v, ok := c[key]; ok {
+		return v
 	}
 	switch key {
 	case TraceParentHeader:
-		v, ok = c["TraceParent"]
-		if ok {
-			return v, true
+		if v, ok := c["TraceParent"]; ok {
+			return v
 		}
 	case TraceStateHeader:
-		v, ok = c["TraceState"]
-		if ok {
-			return v, true
+		if v, ok := c["TraceState"]; ok {
+			return v
 		}
 	}
 	for existingKey, existingValue := range c {
 		if strings.EqualFold(existingKey, key) {
-			return existingValue, true
+			return existingValue
 		}
 	}
-	return "", false
+	return ""
 }
 
 func (c MapCarrier) Set(key string, value string) {

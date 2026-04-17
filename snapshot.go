@@ -13,11 +13,18 @@ type Snapshot struct {
 	TraceID   string          `json:"trace_id"`
 	TimeStart time.Time       `json:"time_start"`
 	TimeEnd   time.Time       `json:"time_end"`
+	Kind      SpanKind        `json:"kind"`
 	Failed    bool            `json:"failed"`
 	Attrs     []slog.Attr     `json:"attrs"`
+	Links     []SnapshotLink  `json:"links"`
 	Events    []SnapshotEvent `json:"events"`
 	Errors    []SnapshotError `json:"errors"`
-	Root      bool            `json:"root"`
+}
+
+type SnapshotLink struct {
+	TraceID string      `json:"trace_id"`
+	SpanID  string      `json:"span_id"`
+	Attrs   []slog.Attr `json:"attrs"`
 }
 
 type SnapshotEvent struct {

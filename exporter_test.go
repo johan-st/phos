@@ -25,7 +25,7 @@ func TestInMemExportImporterSnapshotsAreStable(t *testing.T) {
 	exp := NewInMemExportImporter()
 	withExporter(t, exp)
 
-	ctx, started := NewSpan(context.Background(), "root", slog.String("service", "api"))
+	ctx, started := NewSpan(context.Background(), "root", WithAttrs(slog.String("service", "api")))
 	internal := started
 	Attrs(ctx, slog.String("first", "value"))
 	Event(ctx, "evt", slog.String("phase", "before-end"))
@@ -33,7 +33,7 @@ func TestInMemExportImporterSnapshotsAreStable(t *testing.T) {
 	Error(ctx, rootErr, slog.String("scope", "before-end"))
 	started.End()
 
-	saved := exp.Snapshot()[internal.id]
+	saved := exp.Spans()[internal.id]
 	if len(saved.Attrs) != 2 {
 		t.Fatalf("len(saved.Attrs) = %d, want 2", len(saved.Attrs))
 	}
@@ -48,7 +48,7 @@ func TestInMemExportImporterSnapshotsAreStable(t *testing.T) {
 	internal.Event("later-event", slog.String("phase", "after-end"))
 	internal.Error(errors.New("mutated"), slog.String("scope", "after-end"))
 
-	afterMutation := exp.Snapshot()[internal.id]
+	afterMutation := exp.Spans()[internal.id]
 	if len(afterMutation.Attrs) != 2 {
 		t.Fatalf("len(afterMutation.Attrs) = %d, want 2", len(afterMutation.Attrs))
 	}
@@ -60,20 +60,31 @@ func TestInMemExportImporterSnapshotsAreStable(t *testing.T) {
 	}
 }
 
-func TestViewReturnsDetachedSnapshot(t *testing.T) {
-	_, started := NewSpan(context.Background(), "view", slog.String("service", "api"))
+func TestSnapshotReturnsDetachedSnapshot(t *testing.T) {
+	_, started := NewSpan(
+		context.Background(),
+		"view",
+		WithAttrs(slog.String("service", "api")),
+		WithKind(Client),
+		WithLink("trace-id", "span-id", slog.String("scope", "link")),
+	)
 	sp := started
 	sp.Event("evt", slog.String("phase", "view"))
 	sp.Error(errors.New("boom"), slog.String("scope", "view"))
 
-	first := sp.View()
+	first := sp.Snapshot()
 	first.Attrs[0] = slog.String("service", "mutated")
+	first.Links[0].Attrs[0] = slog.String("scope", "mutated")
 	first.Events[0].Name = "mutated"
 	first.Events[0].Attrs[0] = slog.String("phase", "mutated")
 	first.Errors[0].Attrs[0] = slog.String("scope", "mutated")
 
-	second := sp.View()
+	second := sp.Snapshot()
+	if second.Kind != Client {
+		t.Fatalf("second.Kind = %q, want %q", second.Kind.String(), Client.String())
+	}
 	requireAttrValue(t, second.Attrs, "service", "api")
+	requireAttrValue(t, second.Links[0].Attrs, "scope", "link")
 	if second.Events[0].Name != "evt" {
 		t.Fatalf("second.Events[0].Name = %q, want %q", second.Events[0].Name, "evt")
 	}

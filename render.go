@@ -99,7 +99,7 @@ func buildTreeLayout(spans []Snapshot) []treeNode {
 	}
 
 	for _, span := range ordered {
-		if span.ParentID == "" || span.Root {
+		if span.ParentID == "" {
 			roots = append(roots, span)
 			continue
 		}
@@ -168,7 +168,7 @@ func renderTrace(spans []Snapshot, layout []treeNode) string {
 		if globalEnd.IsZero() || span.TimeEnd.After(globalEnd) {
 			globalEnd = span.TimeEnd
 		}
-		if span.Root {
+		if span.ParentID == "" {
 			traceID = span.TraceID
 		}
 		if traceID == "" {

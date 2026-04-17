@@ -22,7 +22,6 @@ func TestConcurrentSharedSpanMutations(t *testing.T) {
 			Attrs(ctx, slog.Int("i", n))
 			Event(ctx, "event", slog.Int("i", n))
 			Error(ctx, errors.New("boom"), slog.Int("i", n))
-			Fail(ctx)
 		}(i)
 	}
 
@@ -39,8 +38,32 @@ func TestConcurrentSharedSpanMutations(t *testing.T) {
 	if len(data.Errors) != 64 {
 		t.Fatalf("len(Errors) = %d, want %d", len(data.Errors), 64)
 	}
+}
+
+func TestConcurrentFailEndsSpanOnce(t *testing.T) {
+	exp := &captureExporter{}
+	getSpans := withExporter(t, exp)
+
+	ctx, started := NewSpan(context.Background(), "shared-fail")
+	var wg sync.WaitGroup
+
+	for i := range 32 {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			Fail(ctx, errors.New("boom"), slog.Int("i", n))
+		}(i)
+	}
+
+	wg.Wait()
+	started.End()
+
+	data := findSpanDataByName(t, getSpans(), "shared-fail")
 	if !data.Failed {
-		t.Fatal("Fail() from concurrent mutation should be recorded")
+		t.Fatal("Fail() should mark the span as failed")
+	}
+	if len(data.Errors) != 1 {
+		t.Fatalf("len(Errors) = %d, want 1", len(data.Errors))
 	}
 }
 
@@ -56,7 +79,7 @@ func TestConcurrentParallelChildSpans(t *testing.T) {
 		wg.Add(1)
 		go func(n int) {
 			defer wg.Done()
-			ctx, child := NewSpan(rootCtx, "child", slog.Int("i", n))
+			ctx, child := NewSpan(rootCtx, "child", WithAttrs(slog.Int("i", n)))
 			Event(ctx, "work", slog.Int("i", n))
 			child.End()
 		}(i)

@@ -42,9 +42,12 @@ func BenchmarkInjectTraceContextSpan(b *testing.B) {
 	}
 }
 
-func BenchmarkInjectTraceContextRoot(b *testing.B) {
+func BenchmarkInjectTraceContextExtracted(b *testing.B) {
 	carrier := MapCarrier{}
-	ctx := context.Background()
+	ctx := ExtractTraceContext(context.Background(), MapCarrier{
+		TraceParentHeader: validVersion00TraceParent,
+		TraceStateHeader:  "rojo=1,congo=2",
+	})
 	b.ReportAllocs()
 
 	for i := 0; i < b.N; i++ {

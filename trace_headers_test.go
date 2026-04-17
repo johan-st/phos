@@ -476,19 +476,12 @@ func TestInjectExtractStartRoundTripMapCarrier(t *testing.T) {
 	}
 }
 
-func TestInjectWithoutActiveSpanCreatesValidOutgoingHeader(t *testing.T) {
+func TestInjectWithoutActiveSpanIsNoOp(t *testing.T) {
 	carrier := MapCarrier{}
 	InjectTraceContext(context.Background(), carrier)
 
-	traceParent, err := ParseTraceParent(carrier[TraceParentHeader])
-	if err != nil {
-		t.Fatalf("ParseTraceParent() error = %v", err)
-	}
-	if traceParent.TraceID == "" || traceParent.Parent == "" {
-		t.Fatalf("traceparent = %#v, want generated trace and parent ids", traceParent)
-	}
-	if traceParent.Flags != "00" {
-		t.Fatalf("trace flags = %q, want %q", traceParent.Flags, "00")
+	if len(carrier) != 0 {
+		t.Fatalf("carrier = %#v, want no injected headers", carrier)
 	}
 }
 

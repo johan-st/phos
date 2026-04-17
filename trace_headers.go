@@ -80,28 +80,30 @@ func InjectTraceContext(ctx context.Context, carrier Carrier) {
 	if carrier == nil {
 		return
 	}
+	if s := SpanFromContext(ctx); s != nil {
+		carrier.Set(TraceParentHeader, TraceParent{
+			Version: "00",
+			TraceID: s.traceIDValue(),
+			Parent:  s.spanIDValue(),
+			Flags:   outgoingTraceFlagsForValue(s.traceFlagsValue()),
+		}.String())
+		if traceState := s.traceStateValue(); traceState != "" {
+			carrier.Set(TraceStateHeader, traceState)
+		}
+		return
+	}
+
 	traceCtx := traceContextFromContext(ctx)
-	traceID := traceIDFromContext(ctx)
-	if traceID == "" {
-		traceID = generateTraceID()
+	if traceCtx.traceID == "" || traceCtx.parentID == "" {
+		return
 	}
-
-	parentID := ""
-	if s := spanFromContext(ctx); s != nil && s.spanIDValue() != "" {
-		parentID = s.spanIDValue()
-	} else {
-		parentID = generateSpanID()
-	}
-
 	carrier.Set(TraceParentHeader, TraceParent{
 		Version: "00",
-		TraceID: traceID,
-		Parent:  parentID,
-		Flags:   outgoingTraceFlags(ctx),
+		TraceID: traceCtx.traceID,
+		Parent:  traceCtx.parentID,
+		Flags:   outgoingTraceFlagsForValue(traceCtx.traceFlags),
 	}.String())
-	if traceState := traceStateFromContext(ctx); traceState != "" {
-		carrier.Set(TraceStateHeader, traceState)
-	} else if traceCtx.traceState != "" {
+	if traceCtx.traceState != "" {
 		carrier.Set(TraceStateHeader, traceCtx.traceState)
 	}
 }
@@ -110,8 +112,8 @@ func ExtractTraceContext(ctx context.Context, carrier Carrier) context.Context {
 	if carrier == nil {
 		return ctx
 	}
-	v, ok := carrier.Get(TraceParentHeader)
-	if !ok {
+	v := carrier.Get(TraceParentHeader)
+	if v == "" {
 		return ctx
 	}
 	t, err := ParseTraceParent(v)
@@ -130,7 +132,7 @@ func ExtractTraceContext(ctx context.Context, carrier Carrier) context.Context {
 		parentID:   t.Parent,
 		traceFlags: outgoingTraceFlagsForValue(t.Flags),
 	}
-	if traceState, ok := carrier.Get(TraceStateHeader); ok {
+	if traceState := carrier.Get(TraceStateHeader); traceState != "" {
 		if err := validateTraceState(traceState); err != nil {
 			traceCtx.diagnostics = append(traceCtx.diagnostics, traceContextDiagnostic{
 				event:  "tracecontext.invalid_tracestate",
@@ -146,7 +148,7 @@ func ExtractTraceContext(ctx context.Context, carrier Carrier) context.Context {
 }
 
 func traceIDFromContext(ctx context.Context) string {
-	if s := spanFromContext(ctx); s != nil {
+	if s := SpanFromContext(ctx); s != nil {
 		return s.traceIDValue()
 	}
 	if traceCtx := traceContextFromContext(ctx); traceCtx.traceID != "" {
@@ -156,14 +158,14 @@ func traceIDFromContext(ctx context.Context) string {
 }
 
 func traceStateFromContext(ctx context.Context) string {
-	if s := spanFromContext(ctx); s != nil {
+	if s := SpanFromContext(ctx); s != nil {
 		return s.traceStateValue()
 	}
 	return traceContextFromContext(ctx).traceState
 }
 
 func outgoingTraceFlags(ctx context.Context) string {
-	if s := spanFromContext(ctx); s != nil {
+	if s := SpanFromContext(ctx); s != nil {
 		return outgoingTraceFlagsForValue(s.traceFlagsValue())
 	}
 	return outgoingTraceFlagsForValue(traceContextFromContext(ctx).traceFlags)
