@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 )
@@ -73,4 +74,23 @@ func TestExample_TraceVisualization(t *testing.T) {
 	root.End()
 
 	t.Logf("\n%s", RenderTraces(getSpans()))
+}
+
+func TestRenderTraceEndpointMarkers(t *testing.T) {
+	start := time.Unix(0, 0)
+	end := start.Add(time.Second)
+	for _, marker := range []Snapshot{
+		{Events: []SnapshotEvent{{Time: end, Name: "endpoint"}}},
+		{Errors: []SnapshotError{{Err: errors.New("endpoint")}}},
+	} {
+		marker.ID = "child"
+		marker.Name = "child"
+		marker.ParentID = "root"
+		marker.TimeStart = end
+		marker.TimeEnd = end
+		out := RenderTrace([]Snapshot{{ID: "root", Name: "root", TimeStart: start, TimeEnd: end}, marker})
+		if !strings.Contains(out, strings.Repeat("·", 49)+"1") || !strings.Contains(out, "endpoint") {
+			t.Fatalf("endpoint marker missing from final column or legend:\n%s", out)
+		}
+	}
 }

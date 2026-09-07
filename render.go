@@ -214,6 +214,9 @@ func renderTrace(spans []Snapshot, layout []treeNode) string {
 		}
 
 		startCol := scaledColumn(span.TimeStart.Sub(globalStart), scaleDur, barWidth)
+		if startCol >= barWidth {
+			startCol = barWidth - 1
+		}
 		endCol := scaledColumn(span.TimeEnd.Sub(globalStart), scaleDur, barWidth)
 		if endCol <= startCol {
 			endCol = startCol + 1
