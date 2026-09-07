@@ -87,9 +87,7 @@ func InjectTraceContext(ctx context.Context, carrier Carrier) {
 			Parent:  s.spanIDValue(),
 			Flags:   outgoingTraceFlagsForValue(s.traceFlagsValue()),
 		}.String())
-		if traceState := s.traceStateValue(); traceState != "" {
-			carrier.Set(TraceStateHeader, traceState)
-		}
+		injectTraceState(carrier, s.traceStateValue())
 		return
 	}
 
@@ -103,8 +101,17 @@ func InjectTraceContext(ctx context.Context, carrier Carrier) {
 		Parent:  traceCtx.parentID,
 		Flags:   outgoingTraceFlagsForValue(traceCtx.traceFlags),
 	}.String())
-	if traceCtx.traceState != "" {
-		carrier.Set(TraceStateHeader, traceCtx.traceState)
+	injectTraceState(carrier, traceCtx.traceState)
+}
+
+func injectTraceState(carrier Carrier, value string) {
+	for _, key := range carrier.Keys() {
+		if strings.EqualFold(key, TraceStateHeader) {
+			carrier.Set(key, value)
+		}
+	}
+	if value != "" {
+		carrier.Set(TraceStateHeader, value)
 	}
 }
 
@@ -195,9 +202,6 @@ func lowerHexNibble(ch byte) byte {
 }
 
 func validateTraceState(v string) error {
-	if len(v) == 0 {
-		return fmt.Errorf("empty tracestate")
-	}
 	if len(v) > 512 {
 		return fmt.Errorf("tracestate exceeds 512 characters")
 	}
@@ -208,9 +212,9 @@ func validateTraceState(v string) error {
 	}
 
 	for _, member := range members {
-		member = strings.TrimSpace(member)
+		member = strings.Trim(member, " \t")
 		if member == "" {
-			return fmt.Errorf("tracestate contains an empty member")
+			continue
 		}
 
 		key, value, ok := strings.Cut(member, "=")

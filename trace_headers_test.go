@@ -3,6 +3,7 @@ package phos
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -506,6 +507,59 @@ func assertTraceContext(t *testing.T, got, want traceContext) {
 	for i := range want.diagnostics {
 		if got.diagnostics[i] != want.diagnostics[i] {
 			t.Fatalf("diagnostics[%d] = %#v, want %#v", i, got.diagnostics[i], want.diagnostics[i])
+		}
+	}
+}
+
+func TestInjectReplacesExistingTraceState(t *testing.T) {
+	for _, state := range []string{"", "new=value"} {
+		for _, active := range []bool{false, true} {
+			ctx := ExtractTraceContext(context.Background(), MapCarrier{TraceParentHeader: validVersion00TraceParent, TraceStateHeader: state})
+			if active {
+				var span *Span
+				ctx, span = NewSpan(ctx, "child")
+				defer span.End()
+			}
+			headers := http.Header{
+				"tracestate":  {"old=one"},
+				"TraceState":  {"old=two"},
+				"Tracestate":  {"old=three", "old=four"},
+				"X-Unrelated": {"keep"},
+			}
+			for _, carrier := range []Carrier{
+				MapCarrier{TraceStateHeader: "old=one", "TraceState": "other=two"},
+				HTTPHeaderCarrier{Header: headers},
+			} {
+				InjectTraceContext(ctx, carrier)
+				for _, key := range carrier.Keys() {
+					if strings.EqualFold(key, TraceStateHeader) && carrier.Get(key) != state {
+						t.Fatalf("state for %q = %q, want %q", key, carrier.Get(key), state)
+					}
+				}
+			}
+			if len(headers) != 3 || len(headers["Tracestate"]) != 1 || headers["Tracestate"][0] != state || headers.Get("X-Unrelated") != "keep" {
+				t.Fatalf("raw headers retain stale state or lose unrelated data: %#v", headers)
+			}
+		}
+	}
+}
+
+func TestTraceStateEmptyMembers(t *testing.T) {
+	for _, state := range []string{"", " \t", ",", "a=1,,b=2", " ,a=1,\t,b=2, "} {
+		ctx := ExtractTraceContext(context.Background(), MapCarrier{TraceParentHeader: validVersion00TraceParent, TraceStateHeader: state})
+		got := traceContextFromContext(ctx)
+		if got.traceState != state || len(got.diagnostics) != 0 {
+			t.Fatalf("valid state %q rejected: %#v", state, got)
+		}
+		out := MapCarrier{}
+		InjectTraceContext(ctx, out)
+		if out.Get(TraceStateHeader) != state {
+			t.Fatalf("state = %q, want %q", out.Get(TraceStateHeader), state)
+		}
+	}
+	for _, state := range []string{"a=1,\n,b=2", "a=1,\u00a0,b=2"} {
+		if err := validateTraceState(state); err == nil {
+			t.Fatalf("invalid whitespace accepted in %q", state)
 		}
 	}
 }

@@ -49,6 +49,8 @@ func FuzzParseTraceParent(f *testing.F) {
 func FuzzInjectExtractRoundTrip(f *testing.F) {
 	f.Add(validVersion00TraceParent, "rojo=1,congo=2")
 	f.Add(validUnsampledTraceParent, "")
+	f.Add(validVersion00TraceParent, "0")
+	f.Add(validVersion00TraceParent, "a=1,,b=2")
 
 	f.Fuzz(func(t *testing.T, traceParentValue, traceState string) {
 		if _, err := ParseTraceParent(traceParentValue); err != nil {
@@ -60,6 +62,7 @@ func FuzzInjectExtractRoundTrip(f *testing.F) {
 			TraceStateHeader:  traceState,
 		})
 		ctx, started := NewSpan(ctx, "child")
+		defer started.End()
 		sp := started
 
 		carrier := MapCarrier{}
@@ -77,8 +80,12 @@ func FuzzInjectExtractRoundTrip(f *testing.F) {
 		if got.Flags != outgoingTraceFlagsForValue(sp.traceFlags) {
 			t.Fatalf("Flags = %q, want %q", got.Flags, outgoingTraceFlagsForValue(sp.traceFlags))
 		}
-		if traceState != "" && carrier[TraceStateHeader] != traceState {
-			t.Fatalf("TraceState = %q, want %q", carrier[TraceStateHeader], traceState)
+		wantTraceState := traceState
+		if validateTraceState(traceState) != nil {
+			wantTraceState = ""
+		}
+		if carrier[TraceStateHeader] != wantTraceState {
+			t.Fatalf("TraceState = %q, want %q", carrier[TraceStateHeader], wantTraceState)
 		}
 	})
 }

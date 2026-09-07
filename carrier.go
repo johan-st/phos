@@ -39,6 +39,12 @@ func (c HTTPHeaderCarrier) Set(key string, value string) {
 	if c.Header == nil {
 		return
 	}
+	canonicalKey := http.CanonicalHeaderKey(key)
+	for existingKey := range c.Header {
+		if existingKey != canonicalKey && strings.EqualFold(existingKey, key) {
+			delete(c.Header, existingKey)
+		}
+	}
 	c.Header.Set(key, value)
 }
 
