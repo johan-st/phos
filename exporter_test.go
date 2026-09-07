@@ -91,3 +91,28 @@ func TestSnapshotReturnsDetachedSnapshot(t *testing.T) {
 	requireAttrValue(t, second.Events[0].Attrs, "phase", "view")
 	requireAttrValue(t, second.Errors[0].Attrs, "scope", "view")
 }
+
+func TestGroupedSnapshotsAreDetached(t *testing.T) {
+	exp := NewInMemExportImporter()
+	withExporter(t, exp)
+	group := slog.Group("outer", slog.Group("inner", slog.String("key", "original")))
+	_, span := NewSpan(context.Background(), "root", WithAttrs(group), WithLink("trace", "span", group))
+	span.Attrs(group)
+	span.Event("event", group)
+	span.Error(errors.New("error"), group)
+	span.End()
+	for _, snapshot := range []Snapshot{span.Snapshot(), exp.Spans()[span.id]} {
+		for _, attrs := range [][]slog.Attr{snapshot.Attrs, snapshot.Links[0].Attrs, snapshot.Events[0].Attrs, snapshot.Errors[0].Attrs} {
+			for _, attr := range attrs {
+				attr.Value.Group()[0].Value.Group()[0] = slog.String("key", "changed")
+			}
+		}
+	}
+	for _, snapshot := range []Snapshot{span.Snapshot(), exp.Spans()[span.id]} {
+		for _, attrs := range [][]slog.Attr{snapshot.Attrs, snapshot.Links[0].Attrs, snapshot.Events[0].Attrs, snapshot.Errors[0].Attrs} {
+			for _, attr := range attrs {
+				requireAttrValue(t, attr.Value.Group()[0].Value.Group(), "key", "original")
+			}
+		}
+	}
+}

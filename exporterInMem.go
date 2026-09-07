@@ -46,6 +46,11 @@ func cloneAttrs(attrs []slog.Attr) []slog.Attr {
 	}
 	cloned := make([]slog.Attr, len(attrs))
 	copy(cloned, attrs)
+	for i := range cloned {
+		if cloned[i].Value.Kind() == slog.KindGroup {
+			cloned[i].Value = slog.GroupValue(cloneAttrs(cloned[i].Value.Group())...)
+		}
+	}
 	return cloned
 }
 

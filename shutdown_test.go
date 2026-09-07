@@ -2,6 +2,7 @@ package phos
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"testing"
 	"time"
@@ -192,5 +193,92 @@ func TestWaitForClosedBlocksUntilDrainCompletes(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("WaitForClosed did not return after root ended")
+	}
+}
+
+type shutdownExporter func(Snapshot)
+
+func (export shutdownExporter) Export(snapshot Snapshot) {
+	export(snapshot)
+}
+
+func TestShutdownWaitsForSubtreeExports(t *testing.T) {
+	for _, name := range []string{"root", "child", "grandchild"} {
+		for _, cancelDrain := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/cancel=%t", name, cancelDrain), func(t *testing.T) {
+				entered := make(chan struct{})
+				release := make(chan struct{})
+				finished := make(chan struct{})
+				withExporter(t, shutdownExporter(func(snapshot Snapshot) {
+					if snapshot.Name == name {
+						close(entered)
+						<-release
+					}
+				}))
+				rootCtx, root := NewSpan(context.Background(), "root")
+				childCtx, child := NewSpan(rootCtx, "child")
+				_, grandchild := NewSpan(childCtx, "grandchild")
+				blocked := map[string]*Span{"root": root, "child": child, "grandchild": grandchild}[name]
+				go func() {
+					blocked.End()
+					close(finished)
+				}()
+				<-entered
+				ctx, cancel := context.WithCancel(context.Background())
+				defer cancel()
+				DrainAndClose(ctx)
+				if cancelDrain {
+					cancel()
+				} else {
+					root.End()
+				}
+				closed := make(chan struct{})
+				go func() {
+					WaitForClosed()
+					close(closed)
+				}()
+				select {
+				case <-closed:
+					t.Error("shutdown completed while an export was blocked")
+				case <-time.After(20 * time.Millisecond):
+				}
+				close(release)
+				<-finished
+				select {
+				case <-closed:
+				case <-time.After(time.Second):
+					t.Fatal("shutdown did not complete after all exports returned")
+				}
+			})
+		}
+	}
+}
+
+func TestExporterCanEndParent(t *testing.T) {
+	var root *Span
+	var exports []string
+	withExporter(t, shutdownExporter(func(snapshot Snapshot) {
+		exports = append(exports, snapshot.Name)
+		if snapshot.Name == "child" {
+			root.End()
+		}
+	}))
+	ctx, started := NewSpan(context.Background(), "root")
+	root = started
+	_, child := NewSpan(ctx, "child")
+	DrainAndClose(context.Background())
+	done := make(chan struct{})
+	go func() {
+		child.End()
+		WaitForClosed()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("exporter reentry deadlocked")
+	}
+	if len(exports) != 2 || exports[0] != "child" || exports[1] != "root" {
+		t.Fatalf("exports = %v, want [child root]", exports)
 	}
 }

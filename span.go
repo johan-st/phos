@@ -27,6 +27,7 @@ type Span struct {
 	parent     *Span
 	children   map[*Span]struct{}
 	closing    bool
+	exported   bool
 	noop       bool
 }
 
@@ -106,7 +107,7 @@ func (s *Span) Attrs(attrs ...slog.Attr) {
 	if s.closing || !s.timeEnd.IsZero() {
 		return
 	}
-	s.attrs = append(s.attrs, attrs...)
+	s.attrs = append(s.attrs, cloneAttrs(attrs)...)
 }
 
 func (s *Span) Event(name string, attrs ...slog.Attr) {
@@ -227,7 +228,6 @@ func (s *Span) finishSpan(opts endTreeOptions, failed bool, eventName string) {
 	}
 	s.timeEnd = time.Now()
 	exp := s.exporter
-	parent := s.parent
 	s.mu.Unlock()
 
 	if exp == nil {
@@ -237,8 +237,18 @@ func (s *Span) finishSpan(opts endTreeOptions, failed bool, eventName string) {
 		exp.Export(s.Snapshot())
 	}
 
-	if parent != nil {
-		parent.detachChild(s)
+	s.mu.Lock()
+	s.exported = true
+	complete := len(s.children) == 0
+	s.mu.Unlock()
+	if complete {
+		s.completeTree()
+	}
+}
+
+func (s *Span) completeTree() {
+	if s.parent != nil {
+		s.parent.detachChild(s)
 		return
 	}
 	unregisterRootSpan(s)
@@ -340,7 +350,11 @@ func (s *Span) newChildSpan(name string, cfg spanConfig) *Span {
 func (s *Span) detachChild(child *Span) {
 	s.mu.Lock()
 	delete(s.children, child)
+	complete := s.exported && len(s.children) == 0
 	s.mu.Unlock()
+	if complete {
+		s.completeTree()
+	}
 }
 
 func (s *Span) isActiveParent() bool {
