@@ -1,5 +1,7 @@
 version: "3"
 
+dotenv: [".env"]
+
 vars:
   TOOLS_BIN: "{{.ROOT_DIR}}/.tools/bin"
 
@@ -13,6 +15,110 @@ tasks:
     desc: Build all Go packages.
     cmds:
       - go build ./...
+
+  serve:
+    desc: Run the standalone trace dashboard on 127.0.0.1:9094.
+    cmds:
+      - go run ./cmd/phos serve {{.CLI_ARGS}}
+
+  serve:archive:
+    desc: Serve a dashboard archive without a live input (DB, default .phos/dashboard.db).
+    vars:
+      DB: '{{.DB | default ".phos/dashboard.db"}}'
+    cmds:
+      - >-
+        go run ./cmd/phos serve --db {{.DB | shellQuote}}
+        --trace-db= --jaeger-url= --gcp-project= --gcp-filter= {{.CLI_ARGS}}
+
+  serve:native:
+    desc: Follow a native spans_v2 SQLite database (TRACE_DB required; DB defaults to .phos/native.db).
+    requires:
+      vars: [TRACE_DB]
+    vars:
+      DB: '{{.DB | default ".phos/native.db"}}'
+    cmds:
+      - >-
+        go run ./cmd/phos serve --db {{.DB | shellQuote}} --trace-db {{.TRACE_DB | shellQuote}}
+        --jaeger-url= --gcp-project= --gcp-filter= {{.CLI_ARGS}}
+
+  serve:gcp:
+    desc: Follow Google Cloud Trace using ADC and .env defaults (GCP_PROJECT or PHOS_GCP_PROJECT required).
+    vars:
+      DB: '{{.DB | default (env "PHOS_STORE_DB") | default .PHOS_STORE_DB | default ".phos/gcp.db"}}'
+      GCP_PROJECT: '{{.GCP_PROJECT | default (env "PHOS_GCP_PROJECT") | default .PHOS_GCP_PROJECT | default ""}}'
+      GCP_FILTER: '{{.GCP_FILTER | default (env "PHOS_GCP_FILTER") | default .PHOS_GCP_FILTER | default ""}}'
+    preconditions:
+      - sh: test -n {{.GCP_PROJECT | shellQuote}}
+        msg: Set PHOS_GCP_PROJECT in .env or the environment, or pass GCP_PROJECT.
+    cmds:
+      - >-
+        go run ./cmd/phos serve --db {{.DB | shellQuote}} --gcp-project {{.GCP_PROJECT | shellQuote}}
+        --gcp-filter {{.GCP_FILTER | shellQuote}} --trace-db= --jaeger-url= {{.CLI_ARGS}}
+
+  serve:jaeger:
+    desc: Follow a Jaeger API (JAEGER_URL defaults to localhost:16686; DB defaults to .phos/jaeger.db).
+    vars:
+      DB: '{{.DB | default ".phos/jaeger.db"}}'
+      JAEGER_URL: '{{.JAEGER_URL | default "http://127.0.0.1:16686"}}'
+    cmds:
+      - >-
+        go run ./cmd/phos serve --db {{.DB | shellQuote}} --jaeger-url {{.JAEGER_URL | shellQuote}}
+        --trace-db= --gcp-project= --gcp-filter= {{.CLI_ARGS}}
+
+  serve:demo:
+    desc: Follow the public Jaeger demo (DB defaults to .phos/demo.db).
+    vars:
+      DB: '{{.DB | default ".phos/demo.db"}}'
+    cmds:
+      - >-
+        go run ./cmd/phos serve --db {{.DB | shellQuote}} --jaeger-url https://jaeger.demo.jaegertracing.io
+        --trace-db= --gcp-project= --gcp-filter= {{.CLI_ARGS}}
+
+  import:gcp:
+    desc: Import a fixed RFC3339 range from GCP using .env defaults (project, FROM, TO required).
+    requires:
+      vars: [FROM, TO]
+    vars:
+      DB: '{{.DB | default (env "PHOS_STORE_DB") | default .PHOS_STORE_DB | default ".phos/gcp.db"}}'
+      GCP_PROJECT: '{{.GCP_PROJECT | default (env "PHOS_GCP_PROJECT") | default .PHOS_GCP_PROJECT | default ""}}'
+      GCP_FILTER: '{{.GCP_FILTER | default (env "PHOS_GCP_FILTER") | default .PHOS_GCP_FILTER | default ""}}'
+    preconditions:
+      - sh: test -n {{.GCP_PROJECT | shellQuote}}
+        msg: Set PHOS_GCP_PROJECT in .env or the environment, or pass GCP_PROJECT.
+    cmds:
+      - >-
+        go run ./cmd/dashboard-import --db {{.DB | shellQuote}} --gcp-project {{.GCP_PROJECT | shellQuote}}
+        --gcp-filter {{.GCP_FILTER | shellQuote}} --from {{.FROM | shellQuote}} --to {{.TO | shellQuote}} {{.CLI_ARGS}}
+
+  import:jaeger:
+    desc: Import a fixed RFC3339 range from Jaeger (FROM, TO required; JAEGER_URL defaults to localhost:16686).
+    requires:
+      vars: [FROM, TO]
+    vars:
+      DB: '{{.DB | default ".phos/jaeger.db"}}'
+      JAEGER_URL: '{{.JAEGER_URL | default "http://127.0.0.1:16686"}}'
+    cmds:
+      - >-
+        go run ./cmd/dashboard-import --db {{.DB | shellQuote}} --jaeger {{.JAEGER_URL | shellQuote}}
+        --from {{.FROM | shellQuote}} --to {{.TO | shellQuote}} {{.CLI_ARGS}}
+
+  import:demo:
+    desc: Import a fixed RFC3339 range from the public Jaeger demo (FROM, TO required; DB defaults to .phos/demo.db).
+    requires:
+      vars: [FROM, TO]
+    vars:
+      DB: '{{.DB | default ".phos/demo.db"}}'
+    cmds:
+      - >-
+        go run ./cmd/dashboard-import --db {{.DB | shellQuote}} --jaeger https://jaeger.demo.jaegertracing.io
+        --from {{.FROM | shellQuote}} --to {{.TO | shellQuote}} {{.CLI_ARGS}}
+
+  dashboard-ui-build:
+    desc: Test and rebuild the embedded Gleam dashboard frontend.
+    dir: internal/dashboard/ui
+    cmds:
+      - npm ci
+      - bash build.sh
 
   test:
     desc: Run the Go test suite.
@@ -48,8 +154,9 @@ tasks:
       - "{{.TOOLS_BIN}}/govulncheck ./..."
 
   ci:
-    desc: Run build, tests, and static analysis.
+    desc: Run frontend checks and rebuild, Go build, tests, and static analysis.
     cmds:
+      - task: dashboard-ui-build
       - task: build
       - task: test
       - task: vet
