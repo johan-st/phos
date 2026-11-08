@@ -14,6 +14,13 @@ coverage.*
 *.coverprofile
 profile.cov
 
+# Dashboard frontend build products and local data
+/internal/dashboard/ui/build/
+/internal/dashboard/ui/node_modules/
+*.db
+*.db-shm
+*.db-wal
+
 # Go workspace file
 go.work
 go.work.sum
